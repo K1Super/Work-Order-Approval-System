@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <process id="repair-approval-process" name="Equipment Repair Process" isExecutable="true">
+    
+    <startEvent id="start" name="Submit Repair Request" />
+    
+    <userTask id="it_process" name="IT Processing" flowable:assignee="${itEngineerId}" />
+    
+    <userTask id="applicant_accept" name="Applicant Acceptance" flowable:assignee="${applicantId}" />
+    
+    <exclusiveGateway id="accept_gateway" name="Accepted?" />
+    
+    <endEvent id="end_completed" name="Completed" />
+    <endEvent id="end_rejected" name="Rejected - Return to IT" />
+    
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="it_process" />
+    <sequenceFlow id="flow2" sourceRef="it_process" targetRef="applicant_accept" />
+    <sequenceFlow id="flow3" sourceRef="applicant_accept" targetRef="accept_gateway" />
+    <sequenceFlow id="flow4" sourceRef="accept_gateway" targetRef="end_completed">
+      <conditionExpression xsi:type="tFormalExpression">${accepted == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow5" sourceRef="accept_gateway" targetRef="it_process">
+      <conditionExpression xsi:type="tFormalExpression">${accepted == false}</conditionExpression>
+    </sequenceFlow>
+    
+  </process>
+
+</definitions>

@@ -1,0 +1,39 @@
+# EditorConfig - 统一编码规范
+# 防止中文乱码的核心配置文件
+# 所有开发人员必须遵守此配置
+
+root = true
+
+# 全局设置
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Java文件特殊配置
+[*.java]
+charset = utf-8
+indent_size = 4
+
+# XML/HTML文件
+[*.{xml,html,htm}]
+indent_size = 2
+
+# JSON文件
+[*.json]
+indent_size = 2
+
+# Markdown文件
+[*.md]
+trim_trailing_whitespace = false
+
+# Shell脚本
+[*.sh]
+end_of_line = lf
+
+# Batch文件
+[*.bat]
+end_of_line = crlf

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.workorder.com/process"
+             xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL http://www.omg.org/spec/BPMN/20100524/BPMN20.xsd">
+
+    <!--
+        企业级多级审批流程
+        支持6层组织架构：决策层→高管层→部门管理层→专业职能岗→一线执行岗→基层辅助岗
+        审批规则通过approval_rule表配置，支持动态审批链路
+    -->
+    <process id="enterprise_approval_process" name="企业级多级审批流程" isExecutable="true">
+
+        <!-- 开始节点 -->
+        <startEvent id="start" name="开始"/>
+
+        <!-- 提交申请任务（申请人） -->
+        <userTask id="submit_task" name="提交申请" flowable:assignee="${applicantId}"/>
+
+        <!-- 动态审批网关 - 根据审批规则决定是否需要专业职能岗审核 -->
+        <exclusiveGateway id="specialist_gateway" name="是否需要专项审核？"/>
+
+        <!-- 专业职能岗审核节点 -->
+        <userTask id="specialist_review" name="专项审核">
+            <extensionElements>
+                <flowable:taskListener event="create"
+                        delegateExpression="${dynamicTaskAssigner}"/>
+            </extensionElements>
+        </userTask>
+
+        <!-- 部门经理审批节点 -->
+        <userTask id="manager_approve" name="部门经理审批">
+            <extensionElements>
+                <flowable:taskListener event="create"
+                        delegateExpression="${departmentManagerAssigner}"/>
+            </extensionElements>
+        </userTask>
+
+        <!-- 高管层审批网关 -->
+        <exclusiveGateway id="director_gateway" name="是否需要总监/副总审批？"/>
+
+        <!-- 总监/副总审批节点 -->
+        <userTask id="director_approve" name="高管层审批">
+            <extensionElements>
+                <flowable:taskListener event="create"
+                        delegateExpression="${directorAssigner}"/>
+            </extensionElements>
+        </userTask>
+
+        <!-- 决策层终审网关 -->
+        <exclusiveGateway id="executive_gateway" name="是否需要总经理/董事长终审？"/>
+
+        <!-- 总经理/董事长终审节点 -->
+        <userTask id="executive_approve" name="决策层终审">
+            <extensionElements>
+                <flowable:taskListener event="create"
+                        delegateExpression="${executiveAssigner}"/>
+            </extensionElements>
+        </userTask>
+
+        <!-- 结束节点 -->
+        <endEvent id="end_approved" name="审批通过"/>
+        <endEvent id="end_rejected" name="审批驳回"/>
+
+        <!-- 流程连线 -->
+
+        <!-- 开始 -> 提交申请 -->
+        <sequenceFlow id="flow_start_submit" sourceRef="start" targetRef="submit_task"/>
+
+        <!-- 提交申请 -> 专项审核判断 -->
+        <sequenceFlow id="flow_submit_specialist" sourceRef="submit_task" targetRef="specialist_gateway"/>
+
+        <!-- 专项审核判断分支 -->
+        <sequenceFlow id="flow_need_specialist" sourceRef="specialist_gateway" targetRef="specialist_review">
+            <conditionExpression xsi:type="tFormalExpression">${needSpecialistReview == true}</conditionExpression>
+        </sequenceFlow>
+
+        <sequenceFlow id="flow_no_specialist" sourceRef="specialist_gateway" targetRef="manager_approve">
+            <conditionExpression xsi:type="tFormalExpression">${needSpecialistReview == false || needSpecialistReview == null}</conditionExpression>
+        </sequenceFlow>
+
+        <!-- 专项审核 -> 部门经理审批 -->
+        <sequenceFlow id="flow_specialist_manager" sourceRef="specialist_review" targetRef="manager_approve"/>
+
+        <!-- 部门经理审批 -> 高管层判断 -->
+        <sequenceFlow id="flow_manager_director" sourceRef="manager_approve" targetRef="director_gateway"/>
+
+        <!-- 高管层审批判断分支 -->
+        <sequenceFlow id="flow_need_director" sourceRef="director_gateway" targetRef="director_approve">
+            <conditionExpression xsi:type="tFormalExpression">${needDirectorApproval == true}</conditionExpression>
+        </sequenceFlow>
+
+        <sequenceFlow id="flow_no_director" sourceRef="director_gateway" targetRef="executive_gateway">
+            <conditionExpression xsi:type="tFormalExpression">${needDirectorApproval == false || needDirectorApproval == null}</conditionExpression>
+        </sequenceFlow>
+
+        <!-- 高管层审批 -> 决策层判断 -->
+        <sequenceFlow id="flow_director_executive" sourceRef="director_approve" targetRef="executive_gateway"/>
+
+        <!-- 决策层终审判断分支 -->
+        <sequenceFlow id="flow_need_executive" sourceRef="executive_gateway" targetRef="executive_approve">
+            <conditionExpression xsi:type="tFormalExpression">${needExecutiveApproval == true}</conditionExpression>
+        </sequenceFlow>
+
+        <sequenceFlow id="flow_no_executive" sourceRef="executive_gateway" targetRef="end_approved">
+            <conditionExpression xsi:type="tFormalExpression">${needExecutiveApproval == false || needExecutiveApproval == null}</conditionExpression>
+        </sequenceFlow>
+
+        <!-- 决策层终审 -> 结束 -->
+        <sequenceFlow id="flow_executive_end" sourceRef="executive_approve" targetRef="end_approved"/>
+
+    </process>
+
+</definitions>

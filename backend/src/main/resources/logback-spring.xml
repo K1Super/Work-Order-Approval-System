@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    企业级全栈统一日志配置 — 规范条款 3/4/5/9/11/13
+
+    变更历史：
+    - 2026-07-28：全面改造，合并 logback-audit.xml，新增 MDC 占位符、JSON 结构化日志、
+      ERROR 专用文件、命名 Logger 统一路由、分环境级别策略
+  -->
+<configuration>
+    <!-- 引用 SensitiveDataConverter 进行日志脱敏（规范条款 6：零明文敏感数据） -->
+    <conversionRule conversionWord="msg"
+                    converterClass="com.workorder.util.SensitiveDataConverter"/>
+
+    <springProperty scope="context" name="LOG_PATH" source="logging.file.name"
+                    defaultValue="logs/application.log"/>
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name"
+                    defaultValue="work-order-system"/>
+
+    <!--
+        统一日志 Pattern（规范条款 4/7：结构化全链路）
+        新增 MDC 占位符：[%X{traceId:-NO_TRACE}] [%X{spanId:-NO_SPAN}]
+        - traceId：全链路追踪 ID（TraceIdFilter 生成）
+        - spanId：当前请求分段 ID
+        - :-NO_TRACE / :-NO_SPAN：MDC 无值时的默认显示
+    -->
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-NO_TRACE}] [%X{spanId:-NO_SPAN}] %-5level %logger{36} - %msg%n"/>
+    <property name="LOG_CHARSET" value="UTF-8"/>
+
+    <!-- ===================== 控制台输出（dev 主用） ===================== -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>${LOG_CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===================== 主文件输出（按日 + 按大小滚动） ===================== -->
+    <!-- 规范条款 13：按日期/大小滚动分割、压缩归档 -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>${LOG_CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===================== ERROR 专用文件（独立存储，保留 90 天） ===================== -->
+    <!-- 规范条款 5/13：ERROR 级别强制采集，业务/错误/系统分开存储 -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}.error</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}.error.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>90</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>${LOG_CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===================== JSON 结构化日志（ELK/Loki 采集源） ===================== -->
+    <!-- 规范条款 5/13：可采集可告警，预留日志中台对接 -->
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}.json</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}.json.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
+                <timestampFormat>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</timestampFormat>
+                <timestampFormatTimezoneId>UTC</timestampFormatTimezoneId>
+                <appendLineSeparator>true</appendLineSeparator>
+                <jsonFormatter class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter"/>
+                <!-- MDC 全量输出（traceId/spanId/userId/clientIp/path/action/bizNo/duration/errorMessage/errorLocation/errorCode/stackTrace） -->
+                <includeMDC>true</includeMDC>
+                <includeContextName>true</includeContextName>
+            </layout>
+        </encoder>
+    </appender>
+
+    <!-- ===================== 安全审计文件（保留 90 天） ===================== -->
+    <appender name="SECURITY_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}.security</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}.security.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>90</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${LOG_PATTERN}</pattern>
+            <charset>${LOG_CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===================== 数据访问审计文件（保留 90 天） ===================== -->
+    <!-- 合并自 logback-audit.xml（该文件已删除，避免配置歧义） -->
+    <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/audit/data-access-audit.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/audit/data-access-audit.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>90</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%X{traceId:-NO_TRACE}] [%X{spanId:-NO_SPAN}] | %msg%n</pattern>
+            <charset>${LOG_CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===================== 安全违规文件（保留 365 天） ===================== -->
+    <!-- 合并自 logback-audit.xml -->
+    <appender name="SECURITY_VIOLATION_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/audit/security-violations.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/audit/security-violations.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>365</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%X{traceId:-NO_TRACE}] [SECURITY ALERT] | %msg%n</pattern>
+            <charset>${LOG_CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===================== 异步包装（性能优化） ===================== -->
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="FILE"/>
+    </appender>
+
+    <appender name="ASYNC_ERROR_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="ERROR_FILE"/>
+    </appender>
+
+    <appender name="ASYNC_JSON_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>true</neverBlock>
+        <appender-ref ref="JSON_FILE"/>
+    </appender>
+
+    <!-- ===================== 命名 Logger 路由（规范条款 9：分场景日志） ===================== -->
+
+    <!-- 数据访问审计日志 — DataSecurityServiceImpl 使用 -->
+    <logger name="AUDIT_LOGGER" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="AUDIT_FILE"/>
+    </logger>
+
+    <!-- 安全违规日志 — EnterpriseSecurityFilter/AntiReplayAspect/SqlInjectionInterceptor/KekService 使用 -->
+    <logger name="SECURITY_VIOLATION_LOGGER" level="WARN" additivity="false">
+        <appender-ref ref="SECURITY_VIOLATION_FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <!-- 安全审计日志 — 兼容旧命名 -->
+    <logger name="SECURITY_AUDIT" level="INFO" additivity="false">
+        <appender-ref ref="SECURITY_FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <!-- 工单审批审计日志 — WorkOrderEventListener 使用 -->
+    <logger name="WORK_ORDER_AUDIT_LOGGER" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="AUDIT_FILE"/>
+    </logger>
+
+    <!-- 数据对账日志 — DataIntegrityReconciliationTask 使用 -->
+    <logger name="DATA_RECONCILIATION_LOGGER" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="AUDIT_FILE"/>
+    </logger>
+
+    <!-- DEK 迁移日志 — DekMigrationRunner 使用 -->
+    <logger name="DEK_MIGRATION_LOGGER" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="AUDIT_FILE"/>
+    </logger>
+
+    <!-- 前端错误上报日志 — ClientLogController 使用 -->
+    <logger name="CLIENT_ERROR_LOGGER" level="WARN" additivity="false">
+        <appender-ref ref="SECURITY_VIOLATION_FILE"/>
+        <appender-ref ref="AUDIT_FILE"/>
+    </logger>
+
+    <!-- ===================== 应用包级别 ===================== -->
+    <logger name="com.workorder" level="INFO"/>
+    <logger name="com.workorder.service.impl.SecurityAuditServiceImpl" level="INFO"/>
+
+    <!-- 框架噪音降级 -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.flowable" level="ERROR"/>
+    <logger name="org.mybatis" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+
+    <!-- ===================== dev profile：控制台 + 文件 + JSON + ERROR ===================== -->
+    <!-- 规范条款 11：开发环境开启 TRACE/DEBUG/INFO/WARN/ERROR -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+            <appender-ref ref="ASYNC_JSON_FILE"/>
+            <appender-ref ref="ASYNC_ERROR_FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- ===================== default profile（未指定时） ===================== -->
+    <springProfile name="default">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+            <appender-ref ref="ASYNC_JSON_FILE"/>
+            <appender-ref ref="ASYNC_ERROR_FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- ===================== test profile：DEBUG 级别 ===================== -->
+    <!-- 规范条款 11：测试环境关闭 TRACE，保留 DEBUG -->
+    <springProfile name="test">
+        <root level="DEBUG">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+        </root>
+        <logger name="com.workorder" level="DEBUG"/>
+    </springProfile>
+
+    <!-- ===================== prod profile：INFO 级别 + JSON + ERROR ===================== -->
+    <!-- 规范条款 11：生产环境关闭 TRACE/DEBUG，保留 INFO/WARN/ERROR -->
+    <!-- 修复：root level 从 WARN 调为 INFO，确保安全事件日志不丢失 -->
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="ASYNC_FILE"/>
+            <appender-ref ref="ASYNC_JSON_FILE"/>
+            <appender-ref ref="ASYNC_ERROR_FILE"/>
+        </root>
+        <!-- 框架噪音仍降级 -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.flowable" level="ERROR"/>
+    </springProfile>
+</configuration>

@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-08T00:00:00.000Z",
+  "title": "Design System: 工单审批流转系统",
+  "extensions": {
+    "colorMeta": {
+      "accent-blue": {
+        "role": "primary",
+        "displayName": "通道蓝",
+        "canonical": "oklch(58% 0.22 255)",
+        "tonalRamp": ["#002766", "#003A8C", "#0958D9", "#1677FF", "#4096FF", "#69B1FF", "#91CAFF", "#BAE0FF", "#E6F4FF"]
+      },
+      "ink-primary": {
+        "role": "neutral",
+        "displayName": "墨黑",
+        "canonical": "oklch(27% 0.02 260)",
+        "tonalRamp": ["#030712", "#111827", "#1F2937", "#374151", "#4B5563", "#6B7280", "#9CA3AF", "#D1D5DB", "#F3F4F6"]
+      },
+      "surface-page": {
+        "role": "neutral",
+        "displayName": "页面底",
+        "canonical": "oklch(98% 0.005 260)",
+        "tonalRamp": ["#111827", "#1F2937", "#374151", "#6B7280", "#9CA3AF", "#D1D5DB", "#E5E7EB", "#F3F4F6", "#F9FAFB"]
+      },
+      "semantic-success": {
+        "role": "semantic",
+        "displayName": "语义成功",
+        "canonical": "oklch(68% 0.17 145)",
+        "tonalRamp": ["#1D3A1D", "#2E5C2E", "#3E7A3E", "#529B52", "#67C23A", "#85CE61", "#A4DA89", "#C2E7B0", "#F0F9EB"]
+      },
+      "semantic-danger": {
+        "role": "semantic",
+        "displayName": "语义危险",
+        "canonical": "oklch(62% 0.2 25)",
+        "tonalRamp": ["#5C1A1A", "#8C2828", "#B33A3A", "#D94848", "#F56C6C", "#F78989", "#F9A7A7", "#FBC4C4", "#FEF0F0"]
+      }
+    },
+    "typographyMeta": {
+      "body": { "displayName": "正文", "purpose": "表格、表单、描述列表、导航菜单。" },
+      "title": { "displayName": "标题", "purpose": "侧边栏系统名、移动端页眉、区块标题。" },
+      "headline": { "displayName": "大标题", "purpose": "登录页产品名、页面级 h2，每屏一处。" },
+      "label": { "displayName": "标签", "purpose": "表单标签、选中导航、按钮文字。" }
+    },
+    "shadows": [
+      { "name": "drawer-lift", "value": "4px 0 16px rgba(0, 0, 0, 0.08)", "purpose": "移动端侧边栏抽屉，唯一允许的结构性阴影。" }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "导航 hover、侧边栏滑入等默认过渡。" },
+      { "name": "duration-fast", "value": "150ms", "purpose": "按钮、链接颜色变化。" },
+      { "name": "duration-normal", "value": "200ms", "purpose": "菜单项背景过渡。" },
+      { "name": "duration-sidebar", "value": "300ms", "purpose": "侧边栏 transform 滑入。" }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "768px" },
+      { "name": "tablet", "value": "992px" },
+      { "name": "desktop-lg", "value": "1920px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "主操作按钮，用于搜索、新建工单、表单提交。",
+      "html": "<button class=\"ds-btn-primary\">新建工单</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; background: #1677FF; color: #FFFFFF; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; font-weight: 500; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; transition: background 200ms cubic-bezier(0.4, 0, 0.2, 1); } .ds-btn-primary:hover { background: #0958D9; } .ds-btn-primary:focus-visible { outline: 2px solid #1677FF; outline-offset: 2px; } .ds-btn-primary:active { background: #003A8C; } .ds-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-primary-hover",
+      "description": "次要操作，白底细边框。",
+      "html": "<button class=\"ds-btn-ghost\">重置</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; background: #FFFFFF; color: #374151; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; font-weight: 400; padding: 8px 16px; border: 1px solid #E5E7EB; border-radius: 8px; cursor: pointer; transition: background 200ms ease, border-color 200ms ease; } .ds-btn-ghost:hover { background: #F3F4F6; border-color: #D1D5DB; } .ds-btn-ghost:focus-visible { outline: 2px solid #1677FF; outline-offset: 2px; }"
+    },
+    {
+      "name": "Nav Link Active",
+      "kind": "nav",
+      "refersTo": "nav-link-active",
+      "description": "侧边栏当前选中菜单项。",
+      "html": "<a class=\"ds-nav-link ds-nav-link--active\" href=\"#\"><svg class=\"ds-nav-icon\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6\"/></svg><span>我的工单</span></a>",
+      "css": ".ds-nav-link { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; font-weight: 400; color: #6B7280; text-decoration: none; transition: background 200ms ease, color 200ms ease; } .ds-nav-link:hover { background: #F3F4F6; color: #1F2937; } .ds-nav-link--active { background: #E6F4FF; color: #1677FF; font-weight: 500; } .ds-nav-link:focus-visible { outline: 2px solid #1677FF; outline-offset: 2px; } .ds-nav-icon { flex-shrink: 0; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "button-primary",
+      "description": "标准文本输入，扁平边框风格。",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"标题/编号\" />",
+      "css": ".ds-input { width: 100%; height: 32px; padding: 4px 12px; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; color: #374151; background: #FFFFFF; border: 1px solid #D4D4D4; border-radius: 8px; transition: border-color 150ms ease; } .ds-input::placeholder { color: #A3A3A3; } .ds-input:hover { border-color: #9CA3AF; } .ds-input:focus { outline: none; border-color: #1677FF; box-shadow: 0 0 0 1px #1677FF; }"
+    },
+    {
+      "name": "Status Tag",
+      "kind": "chip",
+      "refersTo": "nav-link-active",
+      "description": "工单状态标签，审批中示例。",
+      "html": "<span class=\"ds-tag ds-tag--warning\">审批中</span>",
+      "css": ".ds-tag { display: inline-block; min-width: 70px; text-align: center; padding: 2px 8px; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 12px; font-weight: 400; border-radius: 4px; border: 1px solid transparent; } .ds-tag--warning { color: #E6A23C; background: #FDF6EC; border-color: #F5DAB1; } .ds-tag--success { color: #67C23A; background: #F0F9EB; border-color: #C2E7B0; } .ds-tag--danger { color: #F56C6C; background: #FEF0F0; border-color: #FBC4C4; } .ds-tag--info { color: #909399; background: #F4F4F5; border-color: #D3D4D6; }"
+    },
+    {
+      "name": "Table Card",
+      "kind": "card",
+      "refersTo": "nav-link-default",
+      "description": "列表页表格容器，白底无阴影。",
+      "html": "<div class=\"ds-table-card\"><div class=\"ds-table-card__header\">我的工单</div><div class=\"ds-table-card__body\">表格内容区域</div></div>",
+      "css": ".ds-table-card { background: #FFFFFF; border-radius: 4px; padding: 20px; } .ds-table-card__header { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 16px; font-weight: 600; color: #1F2937; margin-bottom: 16px; } .ds-table-card__body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; color: #606266; }"
+    },
+    {
+      "name": "Action Link",
+      "kind": "custom",
+      "refersTo": "nav-link-default",
+      "description": "表格行内文字操作链，本系统的标志性交互模式。",
+      "html": "<span class=\"ds-actions\"><a class=\"ds-action-link\" href=\"#\">查看</a><span class=\"ds-action-divider\">/</span><a class=\"ds-action-link ds-action-link--success\" href=\"#\">通过</a><span class=\"ds-action-divider\">/</span><a class=\"ds-action-link ds-action-link--danger\" href=\"#\">驳回</a></span>",
+      "css": ".ds-actions { font-size: 14px; } .ds-action-link { color: #606266; text-decoration: none; cursor: pointer; transition: color 150ms ease; } .ds-action-link:hover { color: #1677FF; } .ds-action-link--success:hover { color: #67C23A; } .ds-action-link--danger:hover { color: #F56C6C; } .ds-action-divider { color: #DCDFE6; margin: 0 4px; } .ds-action-link:focus-visible { outline: 2px solid #1677FF; outline-offset: 2px; border-radius: 2px; }"
+    },
+    {
+      "name": "Login Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "登录页主按钮，零圆角黑白风格（待与主界面统一）。",
+      "html": "<button class=\"ds-login-btn\">登 录</button>",
+      "css": ".ds-login-btn { width: 100%; height: 44px; background: #171717; color: #FFFFFF; border: none; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 14px; font-weight: 500; letter-spacing: 0.08em; cursor: pointer; transition: background 150ms ease; } .ds-login-btn:hover { background: #262626; } .ds-login-btn:focus-visible { outline: 2px solid #171717; outline-offset: 2px; } .ds-login-btn:disabled { opacity: 0.6; cursor: not-allowed; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "透明通道",
+    "overview": "这套视觉系统的核心隐喻是「透明通道」：员工提交工单后，每一步审批状态都清晰可见，界面本身不制造噪音，只做信息传导。整体气质沉稳、高效、可信。信息密度适中偏实用，移动端保留完整功能。当前代码存在两套 accent 并存以及登录页与主界面风格差异，后续改造应以本规范为统一目标。",
+    "keyCharacteristics": [
+      "Restrained 色彩策略：冷灰中性底 + 单一 accent 蓝",
+      "扁平分层：边框与背景色差传达深度，不用装饰性阴影",
+      "克制组件：小圆角、细边框、表格内文字链操作",
+      "语义色固定：绿=成功，红=危险，橙=警告，灰=中性",
+      "中文系统字体栈，14px 正文基准"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "通道蓝 (#1677FF) 在任意屏幕上的有色面积不超过 10%。", "section": "colors" },
+      { "name": "The Semantic Lock Rule", "body": "绿=通过/成功，红=驳回/危险，橙=退回/警告，灰=中性/归档。禁止为装饰换色。", "section": "colors" },
+      { "name": "The Fixed Scale Rule", "body": "产品 UI 使用固定 rem 字号，不用 fluid clamp 标题。", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "卡片、筛选栏、表格容器默认无阴影。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 用通道蓝 (#1677FF) 标记当前导航、主按钮、当前流程节点。",
+      "Do 用边框和背景色差分区，不用阴影。",
+      "Do 表格操作用文字链 + 语义 hover 色。",
+      "Do 保证 placeholder 和正文均 ≥4.5:1 对比度。",
+      "Do 移动端触控目标 ≥44px。",
+      "Do 提供 prefers-reduced-motion 降级。"
+    ],
+    "donts": [
+      "Don't 使用通用 SaaS 仪表盘模板：米色背景、渐变 KPI 卡片、大数字指标墙。",
+      "Don't 做成笨重老派企业系统：信息过密、全灰界面、过小控件。",
+      "Don't 使用花哨创业公司风：高饱和装饰色、过度圆角、emoji 点缀。",
+      "Don't 让登录页与主界面长期维持两套视觉语言。",
+      "Don't 用 border-left 大于 1px 的彩色侧条做强调。",
+      "Don't 用渐变文字或 glassmorphism 作默认装饰。"
+    ]
+  }
+}

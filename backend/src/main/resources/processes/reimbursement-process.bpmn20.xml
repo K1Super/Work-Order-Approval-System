@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <!--
+    费用报销流程（三级审批）
+    小额(≤2000): 发起人 → 部门经理 → 财务审核 → 出纳打款 → 结束
+    中额(2000-8000): 发起人 → 部门经理 → 财务审核 → 财务总监 → 出纳打款 → 结束
+    大额(>8000): 发起人 → 部门经理 → 财务审核 → 财务总监 → 总经理终审 → 出纳打款 → 结束
+  -->
+  <process id="reimbursement-process" name="费用报销流程" isExecutable="true">
+    
+    <startEvent id="start" name="提交报销申请" />
+    
+    <!-- 节点1: 部门经理审批（核实业务真实性） -->
+    <userTask id="dept_manager_approve" name="部门经理审批" flowable:assignee="${deptManagerId}" />
+    
+    <!-- 节点2: 财务会计审核（票据与金额合规性） -->
+    <userTask id="finance_review" name="财务审核" flowable:assignee="${financeAccountantId}" />
+    
+    <!-- 判断金额级别 -->
+    <exclusiveGateway id="amount_gateway" name="金额级别判断" />
+    
+    <!-- 分支1: 小额(≤2000) - 直接出纳打款 -->
+    <userTask id="cashier_payment_small" name="出纳执行打款" flowable:assignee="${cashierId}" />
+    <endEvent id="end_approved_small" name="小额报销完成" />
+    
+    <!-- 分支2: 中额(2000-8000) - 需要财务总监审批 -->
+    <userTask id="cfo_approve" name="财务总监审批" flowable:assignee="${cfoId}" />
+    <userTask id="cashier_payment_medium" name="出纳执行打款" flowable:assignee="${cashierId}" />
+    <endEvent id="end_approved_medium" name="中额报销完成" />
+    
+    <!-- 分支3: 大额(>8000) - 需要总经理终审 -->
+    <userTask id="gm_final_approve" name="总经理终审" flowable:assignee="${gmId}" />
+    <userTask id="cashier_payment_large" name="出纳执行打款" flowable:assignee="${cashierId}" />
+    <endEvent id="end_approved_large" name="大额报销完成" />
+    
+    <!-- 拒绝结束节点 -->
+    <endEvent id="end_rejected" name="已拒绝" />
+    
+    <!-- 流程连线 -->
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="dept_manager_approve" />
+    <sequenceFlow id="flow2" sourceRef="dept_manager_approve" targetRef="finance_review" />
+    <sequenceFlow id="flow3" sourceRef="finance_review" targetRef="amount_gateway" />
+    
+    <!-- 小额分支 (amount <= 2000) -->
+    <sequenceFlow id="flow4a" sourceRef="amount_gateway" targetRef="cashier_payment_small">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true &amp;&amp; (amount == null || amount &lt;= 2000)}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow5a" sourceRef="cashier_payment_small" targetRef="end_approved_small" />
+    
+    <!-- 中额分支 (2000 < amount <= 8000) -->
+    <sequenceFlow id="flow4b" sourceRef="amount_gateway" targetRef="cfo_approve">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true &amp;&amp; amount != null &amp;&amp; amount > 2000 &amp;&amp; amount &lt;= 8000}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow5b" sourceRef="cfo_approve" targetRef="cashier_payment_medium" />
+    <sequenceFlow id="flow6b" sourceRef="cashier_payment_medium" targetRef="end_approved_medium" />
+    
+    <!-- 大额分支 (amount > 8000) -->
+    <sequenceFlow id="flow4c" sourceRef="amount_gateway" targetRef="cfo_approve">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true &amp;&amp; amount != null &amp;&amp; amount > 8000}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow5c" sourceRef="cfo_approve" targetRef="gm_final_approve" />
+    <sequenceFlow id="flow6c" sourceRef="gm_final_approve" targetRef="cashier_payment_large" />
+    <sequenceFlow id="flow7c" sourceRef="cashier_payment_large" targetRef="end_approved_large" />
+    
+    <!-- 拒绝流程（任意节点均可拒绝） -->
+    <sequenceFlow id="flow_reject_a" sourceRef="amount_gateway" targetRef="end_rejected">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+    
+  </process>
+
+</definitions>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <!--
+    设备报修流程
+    发起人 → IT运维接单处理 → 发起人验收确认 → 结束
+    特殊: 若24小时内未验收，系统自动默认办结
+  -->
+  <process id="repair-process" name="设备报修流程" isExecutable="true">
+    
+    <startEvent id="start" name="提交设备报修" />
+    
+    <!-- 节点1: IT运维工程师处理 -->
+    <userTask id="it_process" name="IT处理维修" flowable:assignee="${itEngineerId}" />
+    
+    <!-- 节点2: 发起人验收确认 -->
+    <userTask id="applicant_accept" name="发起人验收" flowable:assignee="${applicantId}" />
+    
+    <!-- 验收结果判断 -->
+    <exclusiveGateway id="accept_gateway" name="验收结果" />
+    
+    <!-- 验收通过 - 流程结束 -->
+    <endEvent id="end_completed" name="维修完成" />
+    
+    <!-- 验收不通过 - 返回IT重新处理 -->
+    <endEvent id="end_auto_complete" name="自动完成(超时)" />
+    
+    <!-- 流程连线 -->
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="it_process" />
+    <sequenceFlow id="flow2" sourceRef="it_process" targetRef="applicant_accept" />
+    <sequenceFlow id="flow3" sourceRef="applicant_accept" targetRef="accept_gateway" />
+    
+    <!-- 验收通过 -->
+    <sequenceFlow id="flow4a" sourceRef="accept_gateway" targetRef="end_completed">
+      <conditionExpression xsi:type="tFormalExpression">${accepted == true}</conditionExpression>
+    </sequenceFlow>
+    
+    <!-- 验收不通过，返回IT重新处理 -->
+    <sequenceFlow id="flow4b" sourceRef="accept_gateway" targetRef="it_process">
+      <conditionExpression xsi:type="tFormalExpression">${accepted == false}</conditionExpression>
+    </sequenceFlow>
+    
+    <!-- 超时自动完成（由定时任务触发） -->
+    <sequenceFlow id="flow_timeout" sourceRef="applicant_accept" targetRef="end_auto_complete">
+      <conditionExpression xsi:type="tFormalExpression">${timeout == true}</conditionExpression>
+    </sequenceFlow>
+    
+  </process>
+
+</definitions>

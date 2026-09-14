@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <!--
+    物资申领流程
+    发起人 → 部门经理审批 → 行政审核发放 → 发起人确认领取 → 结束
+  -->
+  <process id="supply-process" name="物资申领流程" isExecutable="true">
+    
+    <startEvent id="start" name="提交物资申领" />
+    
+    <!-- 节点1: 部门经理审批（确认申领合理性） -->
+    <userTask id="dept_manager_approve" name="部门经理审批" flowable:assignee="${deptManagerId}" />
+    
+    <!-- 节点2: 行政专员审核发放 -->
+    <userTask id="admin_distribute" name="行政发放物资" flowable:assignee="${adminStaffId}" />
+    
+    <!-- 节点3: 发起人确认领取 -->
+    <userTask id="applicant_confirm" name="发起人确认领取" flowable:assignee="${applicantId}" />
+    
+    <!-- 确认结果判断 -->
+    <exclusiveGateway id="confirm_gateway" name="确认结果" />
+    
+    <!-- 确认领取 - 流程结束 -->
+    <endEvent id="end_completed" name="申领完成" />
+    
+    <!-- 未领取或有问题 - 返回行政重新处理 -->
+    
+    <!-- 流程连线 -->
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="dept_manager_approve" />
+    <sequenceFlow id="flow2" sourceRef="dept_manager_approve" targetRef="admin_distribute" />
+    <sequenceFlow id="flow3" sourceRef="admin_distribute" targetRef="applicant_confirm" />
+    <sequenceFlow id="flow4" sourceRef="applicant_confirm" targetRef="confirm_gateway" />
+    
+    <!-- 确认领取完成 -->
+    <sequenceFlow id="flow5a" sourceRef="confirm_gateway" targetRef="end_completed">
+      <conditionExpression xsi:type="tFormalExpression">${confirmed == true}</conditionExpression>
+    </sequenceFlow>
+    
+    <!-- 有问题返回行政重新处理（如数量不对、物品错误等） -->
+    <sequenceFlow id="flow5b" sourceRef="confirm_gateway" targetRef="admin_distribute">
+      <conditionExpression xsi:type="tFormalExpression">${confirmed == false}</conditionExpression>
+    </sequenceFlow>
+    
+  </process>
+
+</definitions>

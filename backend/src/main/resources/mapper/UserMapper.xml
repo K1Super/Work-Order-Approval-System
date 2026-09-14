@@ -1,0 +1,442 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workorder.dao.UserMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.workorder.entity.User">
+        <id column="id" property="id"/>
+        <result column="employee_id" property="employeeId"/>
+        <result column="username" property="username"/>
+        <result column="password" property="password"/>
+        <result column="real_name" property="realName"/>
+        <result column="email" property="email" typeHandler="com.workorder.config.AesEncryptedStringTypeHandler"/>
+        <result column="phone" property="phone" typeHandler="com.workorder.config.AesEncryptedStringTypeHandler"/>
+        <result column="department" property="department"/>
+        <result column="position_id" property="positionId"/>
+        <result column="department_id" property="departmentId"/>
+        <result column="superior_id" property="superiorId"/>
+        <result column="org_level" property="orgLevel"/>
+        <result column="status" property="status"/>
+        <result column="hire_date" property="hireDate"/>
+        <result column="avatar" property="avatar"/>
+        <result column="password_change_time" property="passwordChangeTime"/>
+        <!-- OPTIMIZATION 三.3.1/3.3 新增字段映射 -->
+        <result column="token_version" property="tokenVersion"/>
+        <result column="encrypted_dek" property="encryptedDek"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="is_deleted" property="isDeleted"/>
+        <result column="create_by" property="createBy"/>
+        <result column="update_by" property="updateBy"/>
+    </resultMap>
+
+    <!-- Password History Result Map -->
+    <resultMap id="PasswordHistoryResultMap" type="com.workorder.entity.PasswordHistory">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="password_hash" property="passwordHash"/>
+        <result column="change_time" property="changeTime"/>
+        <result column="is_deleted" property="isDeleted"/>
+        <result column="create_by" property="createBy"/>
+        <result column="update_by" property="updateBy"/>
+    </resultMap>
+
+    <resultMap id="RoleInfoResultMap" type="com.workorder.dto.RoleInfoDTO">
+        <id column="role_id" property="id"/>
+        <result column="role_name" property="roleName"/>
+        <result column="role_code" property="roleCode"/>
+        <collection property="permissions" ofType="java.lang.String" javaType="java.util.ArrayList">
+            <result column="permission_code"/>
+        </collection>
+    </resultMap>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM sys_user WHERE id = #{id} AND is_deleted = 0
+    </select>
+
+    <!-- 根据用户名查询 -->
+    <select id="selectByUsername" resultMap="BaseResultMap">
+        SELECT * FROM sys_user WHERE username = #{username} AND is_deleted = 0
+    </select>
+
+    <!-- 根据工号查询（用于登录认证） -->
+    <select id="selectByEmployeeId" resultMap="BaseResultMap">
+        SELECT * FROM sys_user WHERE employee_id = #{employeeId} AND is_deleted = 0
+    </select>
+
+    <!-- 根据工号查询（用于检查唯一性） -->
+    <select id="findByEmployeeId" resultMap="BaseResultMap">
+        SELECT * FROM sys_user WHERE employee_id = #{employeeId} AND is_deleted = 0 LIMIT 1
+    </select>
+
+    <!-- 获取当前最大工号的数字部分 -->
+    <select id="getMaxEmployeeIdNumeric" resultType="java.lang.Integer">
+        SELECT COALESCE(MAX(CAST(employee_id AS INTEGER)), 0) FROM sys_user WHERE employee_id ~ '^\d{6}$'
+    </select>
+
+    <!-- 查询所有用户 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM sys_user WHERE is_deleted = 0 ORDER BY create_time DESC
+    </select>
+
+    <!--
+        插入用户（OPTIMIZATION 三.3.1/3.3 新增 token_version/encrypted_dek）
+        - token_version 默认 0（DB DEFAULT 已设置，此处显式插入保证幂等）
+        - encrypted_dek 由 DekService 在 Service 层生成后填充（NULL 表示尚未生成）
+    -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_user (username, password, real_name, email, phone, department, status, hire_date, position_id, department_id, superior_id, org_level, employee_id, password_changed, token_version, encrypted_dek, is_deleted, create_by, update_by)
+        VALUES (#{username}, #{password}, #{realName}, #{email, typeHandler=com.workorder.config.AesEncryptedStringTypeHandler}, #{phone, typeHandler=com.workorder.config.AesEncryptedStringTypeHandler}, #{department}, #{status}, #{hireDate}, #{positionId}, #{departmentId}, #{superiorId}, #{orgLevel}, #{employeeId}, #{passwordChanged}, COALESCE(#{tokenVersion}, 0), #{encryptedDek}, 0, #{createBy}, #{updateBy})
+    </insert>
+
+    <!-- 更新用户 -->
+    <update id="update">
+        UPDATE sys_user
+        <set>
+            <if test="password != null">password = #{password},</if>
+            <if test="realName != null">real_name = #{realName},</if>
+            <if test="email != null">email = #{email, typeHandler=com.workorder.config.AesEncryptedStringTypeHandler},</if>
+            <if test="phone != null">phone = #{phone, typeHandler=com.workorder.config.AesEncryptedStringTypeHandler},</if>
+            <if test="department != null">department = #{department},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="hireDate != null">hire_date = #{hireDate},</if>
+            <if test="avatar != null">avatar = #{avatar},</if>
+            <if test="positionId != null">position_id = #{positionId},</if>
+            <if test="departmentId != null">department_id = #{departmentId},</if>
+            <if test="superiorId != null">superior_id = #{superiorId},</if>
+            <if test="orgLevel != null">org_level = #{orgLevel},</if>
+            <if test="passwordChanged != null">password_changed = #{passwordChanged},</if>
+            <if test="tokenVersion != null">token_version = #{tokenVersion},</if>
+            <if test="encryptedDek != null">encrypted_dek = #{encryptedDek},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            update_time = CURRENT_TIMESTAMP,
+        </set>
+        WHERE id = #{id} AND is_deleted = 0
+    </update>
+
+    <!-- 逻辑删除用户（规范 §2.3.2 逻辑删除优先） -->
+    <update id="deleteById">
+        UPDATE sys_user SET is_deleted = 1, status = 0, update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id} AND is_deleted = 0
+    </update>
+
+    <!-- 根据用户ID查询角色列表（包含权限） -->
+    <select id="selectRolesByUserId" resultMap="RoleInfoResultMap">
+        SELECT r.id AS role_id, r.role_name, r.role_code, p.permission_code
+        FROM sys_role r
+                 INNER JOIN sys_user_role ur ON r.id = ur.role_id
+                 LEFT JOIN sys_role_permission rp ON r.id = rp.role_id
+                 LEFT JOIN sys_permission p ON rp.permission_id = p.id AND p.status = 1
+        WHERE ur.user_id = #{userId}
+          AND r.status = 1
+          AND r.is_deleted = 0
+        ORDER BY r.id, p.sort_order
+    </select>
+
+    <!-- 按角色编码查找第一个启用用户（用于审批人兜底） -->
+    <select id="selectFirstActiveUserIdByRoleCode" resultType="java.lang.Long">
+        SELECT u.id
+        FROM sys_user u
+                 INNER JOIN sys_user_role ur ON u.id = ur.user_id
+                 INNER JOIN sys_role r ON ur.role_id = r.id
+        WHERE r.role_code = #{roleCode}
+          AND u.status = 1
+          AND u.is_deleted = 0
+          AND r.status = 1
+          AND r.is_deleted = 0
+        ORDER BY u.id
+        LIMIT 1
+    </select>
+
+    <!-- 根据用户ID查询权限编码列表 -->
+    <select id="selectPermissionCodesByUserId" resultType="java.lang.String">
+        SELECT p.permission_code
+        FROM sys_permission p
+                 INNER JOIN sys_role_permission rp ON p.id = rp.permission_id
+                 INNER JOIN sys_user_role ur ON rp.role_id = ur.role_id
+                 INNER JOIN sys_role r ON ur.role_id = r.id
+        WHERE ur.user_id = #{userId}
+          AND p.status = 1
+          AND p.is_deleted = 0
+          AND r.status = 1
+          AND r.is_deleted = 0
+        GROUP BY p.id, p.permission_code, p.sort_order
+        ORDER BY p.sort_order
+    </select>
+
+    <!-- 根据用户名查询（用于检查重复） -->
+    <select id="findByUsername" resultMap="BaseResultMap">
+        SELECT * FROM sys_user WHERE username = #{username} AND is_deleted = 0
+    </select>
+
+    <!-- 查询用户名（包含已软删除的用户，用于创建员工时检查用户名重复） -->
+    <select id="findByUsernameIncludeDeleted" resultMap="BaseResultMap">
+        SELECT * FROM sys_user WHERE username = #{username}
+    </select>
+
+    <!-- 物理删除用户记录（直接 DELETE，仅用于释放已软删除用户占用的用户名） -->
+    <delete id="physicalDeleteById">
+        DELETE FROM sys_user WHERE id = #{userId} AND is_deleted = 1
+    </delete>
+
+    <!-- 分页查询用户列表 -->
+    <select id="selectList" resultMap="BaseResultMap">
+        SELECT u.*
+        FROM sys_user u
+        <where>
+            AND u.is_deleted = 0
+            <!-- 过滤已删除的员工(status=-1)和已离职的员工(status=-2) -->
+            AND (u.status IS NULL OR u.status >= 0)
+            <if test="keyword != null and keyword != ''">
+                AND (u.real_name LIKE #{keyword} OR u.username LIKE #{keyword} OR u.phone LIKE #{keyword})
+            </if>
+            <if test="departmentId != null">
+                AND u.department_id = #{departmentId}
+            </if>
+            <if test="positionId != null">
+                AND u.position_id = #{positionId}
+            </if>
+            <if test="orgLevel != null">
+                AND u.org_level = #{orgLevel}
+            </if>
+        </where>
+        ORDER BY u.create_time DESC
+        LIMIT #{pageSize} OFFSET (#{pageNum} - 1) * #{pageSize}
+    </select>
+
+    <!-- 统计用户总数 -->
+    <select id="countTotal" resultType="int">
+        SELECT COUNT(*)
+        FROM sys_user u
+        <where>
+            AND u.is_deleted = 0
+            <!-- 过滤已删除的员工(status=-1)和已离职的员工(status=-2) -->
+            AND (u.status IS NULL OR u.status >= 0)
+            <if test="keyword != null and keyword != ''">
+                AND (u.real_name LIKE #{keyword} OR u.username LIKE #{keyword} OR u.phone LIKE #{keyword})
+            </if>
+            <if test="departmentId != null">
+                AND u.department_id = #{departmentId}
+            </if>
+            <if test="positionId != null">
+                AND u.position_id = #{positionId}
+            </if>
+            <if test="orgLevel != null">
+                AND u.org_level = #{orgLevel}
+            </if>
+        </where>
+    </select>
+
+    <!-- 更新用户信息（根据ID） -->
+    <update id="updateById" parameterType="com.workorder.entity.User">
+        UPDATE sys_user
+        <set>
+            <if test="username != null">username = #{username},</if>
+            <if test="password != null">password = #{password},</if>
+            <if test="realName != null">real_name = #{realName},</if>
+            <if test="email != null">email = #{email, typeHandler=com.workorder.config.AesEncryptedStringTypeHandler},</if>
+            <if test="phone != null">phone = #{phone, typeHandler=com.workorder.config.AesEncryptedStringTypeHandler},</if>
+            <if test="department != null">department = #{department},</if>
+            <if test="positionId != null">position_id = #{positionId},</if>
+            <if test="departmentId != null">department_id = #{departmentId},</if>
+            <if test="superiorId != null">superior_id = #{superiorId},</if>
+            <if test="orgLevel != null">org_level = #{orgLevel},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="hireDate != null">hire_date = #{hireDate},</if>
+            <if test="passwordChanged != null">password_changed = #{passwordChanged},</if>
+            <if test="tokenVersion != null">token_version = #{tokenVersion},</if>
+            <if test="encryptedDek != null">encrypted_dek = #{encryptedDek},</if>
+            update_time = CURRENT_TIMESTAMP,
+        </set>
+        WHERE id = #{id} AND is_deleted = 0
+    </update>
+
+    <!-- 删除用户角色关联 -->
+    <delete id="deleteUserRoles">
+        DELETE FROM sys_user_role WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 插入用户角色关联 -->
+    <insert id="insertUserRole">
+        INSERT INTO sys_user_role (user_id, role_id) VALUES (#{userId}, #{roleId})
+    </insert>
+
+    <!-- 查询所有部门 -->
+    <select id="selectAllDepartments" resultType="java.util.HashMap">
+        SELECT id AS value, dept_name AS label, org_level FROM sys_department WHERE is_deleted = 0 ORDER BY id
+    </select>
+
+    <!-- 查询所有职位 -->
+    <select id="selectAllPositions" resultType="java.util.HashMap">
+        SELECT id AS value, position_name AS label, dept_id, org_level FROM sys_position WHERE is_deleted = 0 ORDER BY dept_id, id
+    </select>
+
+    <!-- 查询所有角色 -->
+    <select id="selectAllRoles" resultType="java.util.HashMap">
+        SELECT id AS value, role_name AS label, role_code, org_level, description FROM sys_role WHERE status = 1 AND is_deleted = 0 ORDER BY org_level, id
+    </select>
+
+    <!-- 根据用户ID查询角色ID列表 -->
+    <select id="getUserRoleIds" resultType="java.lang.Long">
+        SELECT role_id FROM sys_user_role WHERE user_id = #{userId}
+    </select>
+
+    <!-- 根据角色ID列表查询角色名称 -->
+    <select id="getUserRoleNames" resultType="java.lang.String">
+        SELECT role_name FROM sys_role WHERE is_deleted = 0 AND id IN
+        <foreach collection="list" item="roleId" open="(" separator="," close=")">
+            #{roleId}
+        </foreach>
+        ORDER BY org_level, id
+    </select>
+
+    <!-- 根据角色ID列表查询角色的组织层级 -->
+    <select id="selectRolesByIds" resultType="java.util.HashMap">
+        SELECT id, org_level FROM sys_role WHERE is_deleted = 0 AND id IN
+        <foreach collection="list" item="roleId" open="(" separator="," close=")">
+            #{roleId}
+        </foreach>
+    </select>
+
+    <!-- 根据组织层级列表查询上级 -->
+    <select id="selectByOrgLevels" resultMap="BaseResultMap">
+        SELECT * FROM sys_user
+        WHERE org_level IN
+        <foreach collection="orgLevels" item="level" open="(" separator="," close=")">
+            #{level}
+        </foreach>
+        AND org_level &gt; 0
+        AND status = 1
+        AND is_deleted = 0
+        ORDER BY org_level, real_name
+    </select>
+
+    <!-- 查询管理层及以上的用户（排除超级管理员 org_level=0，超管不作为员工的直属上级） -->
+    <select id="selectManagers" resultMap="BaseResultMap">
+        SELECT * FROM sys_user
+        WHERE org_level &gt; 0 AND org_level &lt;= #{maxOrgLevel} AND status = 1 AND is_deleted = 0
+        ORDER BY org_level, real_name
+    </select>
+
+    <!-- 根据部门ID查询该部门的管理层用户（org_level <= 2） -->
+    <!-- 用于动态任务分配器查找部门经理 -->
+    <select id="selectDeptManagers" resultMap="BaseResultMap">
+        SELECT * FROM sys_user
+        WHERE department_id = #{departmentId}
+          AND org_level &lt;= 2
+          AND status = 1
+          AND is_deleted = 0
+        ORDER BY org_level ASC, id ASC
+    </select>
+
+    <!-- 根据组织层级列表查询用户 -->
+    <!-- 用于动态任务分配器查找高管层审批人 -->
+    <select id="selectUsersWithRoles" resultMap="BaseResultMap">
+        SELECT DISTINCT u.*
+        FROM sys_user u
+                 INNER JOIN sys_user_role ur ON u.id = ur.user_id
+                 INNER JOIN sys_role r ON ur.role_id = r.id
+        WHERE u.org_level IN
+        <foreach collection="orgLevels" item="level" open="(" separator="," close=")">
+            #{level}
+        </foreach>
+          AND u.status = 1
+          AND u.is_deleted = 0
+          AND r.status = 1
+          AND r.is_deleted = 0
+        ORDER BY u.org_level ASC, u.id ASC
+    </select>
+
+    <!-- 更新用户密码（同时更新 password_change_time，确保 90 天过期策略生效）-->
+    <!-- password_changed 使用 COALESCE 保持向后兼容：调用方未设置时保持原值 -->
+    <update id="updatePassword" parameterType="com.workorder.entity.User">
+        UPDATE sys_user
+        SET password = #{password},
+            password_changed = COALESCE(#{passwordChanged}, password_changed),
+            password_change_time = CURRENT_TIMESTAMP,
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <!-- ========== Password History Operations (Enterprise Security) ========== -->
+
+    <!-- Insert password history record -->
+    <insert id="insertPasswordHistory" parameterType="com.workorder.entity.PasswordHistory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_password_history (user_id, password_hash, change_time)
+        VALUES (#{userId}, #{passwordHash}, #{changeTime})
+    </insert>
+
+    <!-- Select recent password history for a user -->
+    <select id="selectPasswordHistory" resultMap="PasswordHistoryResultMap">
+        SELECT * FROM sys_password_history
+        WHERE user_id = #{userId} AND is_deleted = 0
+        ORDER BY change_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- Select all password history for a user -->
+    <select id="selectAllPasswordHistory" resultMap="PasswordHistoryResultMap">
+        SELECT * FROM sys_password_history
+        WHERE user_id = #{userId} AND is_deleted = 0
+        ORDER BY change_time ASC
+    </select>
+
+    <!-- 逻辑删除密码历史记录（规范 §2.3.2 逻辑删除优先） -->
+    <update id="deletePasswordHistoryByIds">
+        UPDATE sys_password_history SET is_deleted = 1, update_time = CURRENT_TIMESTAMP WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <!-- ============================================================ -->
+    <!-- OPTIMIZATION 三.3.1 JWT Token 版本号管理                       -->
+    <!-- ============================================================ -->
+
+    <!--
+        查询用户当前 token_version（OPTIMIZATION 三.3.1）
+        用于 JwtAuthenticationFilter 校验 JWT 荷载中的版本号是否与数据库一致
+    -->
+    <select id="selectTokenVersion" resultType="java.lang.Long">
+        SELECT token_version FROM sys_user
+        WHERE id = #{userId} AND is_deleted = 0
+    </select>
+
+    <!--
+        递增 token_version（OPTIMIZATION 三.3.1）
+        触发场景：用户改密 / 被管理员禁用 / 主动注销 / 强制下线
+        递增后所有携带旧版本号的 JWT 立即失效
+    -->
+    <update id="incrementTokenVersion">
+        UPDATE sys_user
+        SET token_version = token_version + 1,
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{userId} AND is_deleted = 0
+    </update>
+
+    <!-- ============================================================ -->
+    <!-- OPTIMIZATION 三.3.3 DEK/KEK 分层加密                          -->
+    <!-- ============================================================ -->
+
+    <!--
+        查询用户加密后的 DEK（OPTIMIZATION 三.3.3）
+        用于敏感字段（手机号/邮箱）解密时取回 DEK
+    -->
+    <select id="selectEncryptedDek" resultType="java.lang.String">
+        SELECT encrypted_dek FROM sys_user
+        WHERE id = #{userId} AND is_deleted = 0
+    </select>
+
+    <!--
+        更新用户 encrypted_dek（OPTIMIZATION 三.3.3）
+        用于：1) 新用户首次生成 DEK；2) KEK 轮换时重新加密 DEK
+    -->
+    <update id="updateEncryptedDek">
+        UPDATE sys_user
+        SET encrypted_dek = #{encryptedDek},
+            update_time = CURRENT_TIMESTAMP
+        WHERE id = #{userId} AND is_deleted = 0
+    </update>
+
+</mapper>

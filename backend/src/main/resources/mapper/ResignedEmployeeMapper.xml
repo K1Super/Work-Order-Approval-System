@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workorder.dao.ResignedEmployeeMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.workorder.entity.ResignedEmployee">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="username" property="username"/>
+        <result column="real_name" property="realName"/>
+        <result column="email" property="email"/>
+        <result column="phone" property="phone"/>
+        <result column="department" property="department"/>
+        <result column="department_id" property="departmentId"/>
+        <result column="position_id" property="positionId"/>
+        <result column="position_name" property="positionName"/>
+        <result column="org_level" property="orgLevel"/>
+        <result column="hire_date" property="hireDate"/>
+        <result column="resign_date" property="resignDate"/>
+        <result column="resign_type" property="resignType"/>
+        <result column="resign_reason" property="resignReason"/>
+        <result column="remark" property="remark"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="create_time" property="createTime"/>
+        <result column="is_deleted" property="isDeleted"/>
+        <result column="create_by" property="createBy"/>
+        <result column="update_by" property="updateBy"/>
+    </resultMap>
+
+    <!-- 插入离职员工记录 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_resigned_employee (
+            user_id, username, real_name, email, phone,
+            department, department_id, position_id, position_name,
+            org_level, hire_date, resign_date, resign_type,
+            resign_reason, remark, operator_id, operator_name, is_deleted, create_by
+        ) VALUES (
+            #{userId}, #{username}, #{realName}, #{email}, #{phone},
+            #{department}, #{departmentId}, #{positionId}, #{positionName},
+            #{orgLevel}, #{hireDate}, #{resignDate}, #{resignType},
+            #{resignReason}, #{remark}, #{operatorId}, #{operatorName}, 0, #{createBy}
+        )
+    </insert>
+
+    <!-- 根据ID查询离职员工 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM sys_resigned_employee WHERE id = #{id} AND is_deleted = 0
+    </select>
+
+    <!-- 分页查询离职员工列表 -->
+    <select id="selectList" resultMap="BaseResultMap">
+        SELECT * FROM sys_resigned_employee
+        <where>
+            AND is_deleted = 0
+            <if test="keyword != null and keyword != ''">
+                AND (real_name LIKE #{keyword} OR username LIKE #{keyword} OR phone LIKE #{keyword})
+            </if>
+            <if test="departmentId != null">
+                AND department_id = #{departmentId}
+            </if>
+            <if test="resignType != null">
+                AND resign_type = #{resignType}
+            </if>
+        </where>
+        ORDER BY resign_date DESC
+        LIMIT #{pageSize} OFFSET (#{pageNum} - 1) * #{pageSize}
+    </select>
+
+    <!-- 统计离职员工总数 -->
+    <select id="countTotal" resultType="int">
+        SELECT COUNT(*) FROM sys_resigned_employee
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (real_name LIKE #{keyword} OR username LIKE #{keyword} OR phone LIKE #{keyword})
+            </if>
+            <if test="departmentId != null">
+                AND department_id = #{departmentId}
+            </if>
+            <if test="resignType != null">
+                AND resign_type = #{resignType}
+            </if>
+        </where>
+    </select>
+
+    <!-- 根据原用户ID查询 -->
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT * FROM sys_resigned_employee WHERE user_id = #{userId} AND is_deleted = 0
+    </select>
+
+</mapper>

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workorder.dao.ApprovalLogMapper">
+
+    <!--
+        结果映射（OPTIMIZATION 四 改造）
+        - action/node_status/before_status/after_status 改为 Integer（SMALLINT）
+        - create_time 使用 InstantTypeHandler 处理 TIMESTAMPTZ ↔ Instant
+        - 移除 is_deleted 列映射（日志表为纯追加写，OPTIMIZATION 四.4.1）
+        - 表为分区表（按月 RANGE(create_time)），父表索引自动应用到所有分区
+    -->
+    <resultMap id="BaseResultMap" type="com.workorder.entity.ApprovalLog">
+        <id column="id" property="id"/>
+        <result column="work_order_id" property="workOrderId"/>
+        <result column="order_no" property="orderNo"/>
+        <result column="process_instance_id" property="processInstanceId"/>
+        <result column="task_id" property="taskId"/>
+        <result column="task_name" property="taskName"/>
+        <result column="operator_id" property="operatorId"/>
+        <result column="operator_name" property="operatorName"/>
+        <result column="action" property="action"/>
+        <result column="comment" property="comment"/>
+        <result column="node_status" property="nodeStatus"/>
+        <result column="before_status" property="beforeStatus"/>
+        <result column="after_status" property="afterStatus"/>
+        <result column="duration" property="duration"/>
+        <result column="create_time" property="createTime" typeHandler="com.workorder.config.InstantTypeHandler"/>
+        <result column="create_by" property="createBy"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, work_order_id, order_no, process_instance_id, task_id, task_name,
+        operator_id, operator_name, action, comment, node_status,
+        before_status, after_status, duration, create_time, create_by
+    </sql>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM approval_log
+        WHERE id = #{id}
+    </select>
+
+    <!-- 根据工单ID查询日志列表 -->
+    <select id="selectByWorkOrderId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM approval_log
+        WHERE work_order_id = #{workOrderId}
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 根据流程实例ID查询日志列表 -->
+    <select id="selectByProcessInstanceId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM approval_log
+        WHERE process_instance_id = #{processInstanceId}
+        ORDER BY create_time ASC
+    </select>
+
+    <!--
+        分页查询日志（action 为 Integer，OPTIMIZATION 四.4.2）
+        注意：日志表为追加写，无 is_deleted 过滤
+    -->
+    <select id="selectPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM approval_log
+        <where>
+            <if test="workOrderId != null">
+                AND work_order_id = #{workOrderId}
+            </if>
+            <if test="action != null">
+                AND action = #{action}
+            </if>
+            <if test="operatorId != null">
+                AND operator_id = #{operatorId}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <!-- 统计总数 -->
+    <select id="countTotal" resultType="long">
+        SELECT COUNT(*) FROM approval_log
+        <where>
+            <if test="workOrderId != null">
+                AND work_order_id = #{workOrderId}
+            </if>
+            <if test="action != null">
+                AND action = #{action}
+            </if>
+            <if test="operatorId != null">
+                AND operator_id = #{operatorId}
+            </if>
+        </where>
+    </select>
+
+    <!--
+        插入日志（OPTIMIZATION 四.4.1：纯追加写，无 is_deleted/create_by 之外字段）
+        create_time 由数据库 DEFAULT CURRENT_TIMESTAMP 填充（分区表自动路由到当月分区）
+    -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO approval_log (
+            work_order_id, order_no, process_instance_id, task_id, task_name,
+            operator_id, operator_name, action, comment, node_status,
+            before_status, after_status, duration, create_by
+        ) VALUES (
+            #{workOrderId}, #{orderNo}, #{processInstanceId}, #{taskId}, #{taskName},
+            #{operatorId}, #{operatorName}, #{action}, #{comment}, #{nodeStatus},
+            #{beforeStatus}, #{afterStatus}, #{duration}, #{createBy}
+        )
+    </insert>
+
+</mapper>

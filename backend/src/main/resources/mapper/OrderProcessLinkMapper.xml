@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workorder.dao.OrderProcessLinkMapper">
+
+    <!-- 结果映射（OPTIMIZATION 一 架构解耦） -->
+    <resultMap id="BaseResultMap" type="com.workorder.entity.OrderProcessLink">
+        <id column="id" property="id"/>
+        <result column="work_order_id" property="workOrderId"/>
+        <result column="process_instance_id" property="processInstanceId"/>
+        <result column="process_definition_id" property="processDefinitionId"/>
+        <result column="create_time" property="createTime" typeHandler="com.workorder.config.InstantTypeHandler"/>
+        <result column="update_time" property="updateTime" typeHandler="com.workorder.config.InstantTypeHandler"/>
+        <result column="is_deleted" property="isDeleted"/>
+        <result column="create_by" property="createBy"/>
+        <result column="update_by" property="updateBy"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, work_order_id, process_instance_id, process_definition_id,
+        create_time, update_time, is_deleted, create_by, update_by
+    </sql>
+
+    <!-- 根据工单ID查询 -->
+    <select id="selectByWorkOrderId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM order_process_link
+        WHERE work_order_id = #{workOrderId} AND is_deleted = 0
+    </select>
+
+    <!-- 根据流程实例ID查询 -->
+    <select id="selectByProcessInstanceId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM order_process_link
+        WHERE process_instance_id = #{processInstanceId} AND is_deleted = 0
+    </select>
+
+    <!--
+        插入关联记录
+        work_order_id 与 process_instance_id 均有 UNIQUE 约束，重复插入会被拒绝
+    -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO order_process_link (
+            work_order_id, process_instance_id, process_definition_id,
+            is_deleted, create_by, update_by
+        ) VALUES (
+            #{workOrderId}, #{processInstanceId}, #{processDefinitionId},
+            0, #{createBy}, #{updateBy}
+        )
+    </insert>
+
+    <!-- 更新关联记录（流程重启场景，如重新提交时复用同一条记录） -->
+    <update id="updateProcessInstance">
+        UPDATE order_process_link
+        SET process_instance_id = #{processInstanceId},
+            process_definition_id = #{processDefinitionId},
+            update_time = CURRENT_TIMESTAMP
+        WHERE work_order_id = #{workOrderId} AND is_deleted = 0
+    </update>
+
+    <!-- 逻辑删除关联记录 -->
+    <update id="deleteByWorkOrderId">
+        UPDATE order_process_link
+        SET is_deleted = 1, update_time = CURRENT_TIMESTAMP
+        WHERE work_order_id = #{workOrderId} AND is_deleted = 0
+    </update>
+
+</mapper>

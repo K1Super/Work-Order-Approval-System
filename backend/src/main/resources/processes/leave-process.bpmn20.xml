@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <!--
+    请假工单流程（三级审批）
+    短假(≤2天): 发起人 → 部门经理 → HR备案 → 结束
+    中长假(3-5天): 发起人 → 部门经理 → HR复核 → 人事总监 → 结束
+    长假(>5天): 发起人 → 部门经理 → HR复核 → 人事总监 → 总经理终审 → 结束
+  -->
+  <process id="leave-process" name="请假申请流程" isExecutable="true">
+    
+    <startEvent id="start" name="提交请假申请" />
+    
+    <!-- 节点1: 部门经理审批 -->
+    <userTask id="dept_manager_approve" name="部门经理审批" flowable:assignee="${deptManagerId}" />
+    
+    <!-- 判断假期长度 -->
+    <exclusiveGateway id="leave_length_gateway" name="假期长度判断" />
+    
+    <!-- 分支1: 短假(≤2天) - 直接HR备案 -->
+    <userTask id="hr_filing_short" name="HR备案" flowable:assignee="${hrStaffId}" />
+    <endEvent id="end_approved_short" name="短假已批准" />
+    
+    <!-- 分支2: 中长假(3-5天) - 需要HR复核+人事总监 -->
+    <userTask id="hr_review" name="HR考勤复核" flowable:assignee="${hrStaffId}" />
+    <userTask id="chro_approve" name="人事总监审批" flowable:assignee="${chroId}" />
+    <endEvent id="end_approved_medium" name="中长假已批准" />
+    
+    <!-- 分支3: 长假(>5天) - 需要总经理终审 -->
+    <userTask id="gm_final_approve" name="总经理终审" flowable:assignee="${gmId}" />
+    <endEvent id="end_approved_long" name="长假已批准" />
+    
+    <!-- 拒绝结束节点 -->
+    <endEvent id="end_rejected" name="已拒绝" />
+    
+    <!-- 流程连线 -->
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="dept_manager_approve" />
+    <sequenceFlow id="flow2" sourceRef="dept_manager_approve" targetRef="leave_length_gateway" />
+    
+    <!-- 短假分支 (days <= 2) -->
+    <sequenceFlow id="flow3a" sourceRef="leave_length_gateway" targetRef="hr_filing_short">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true &amp;&amp; (leaveDays == null || leaveDays &lt;= 2)}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow4a" sourceRef="hr_filing_short" targetRef="end_approved_short" />
+    
+    <!-- 中长假分支 (3 <= days <= 5) -->
+    <sequenceFlow id="flow3b" sourceRef="leave_length_gateway" targetRef="hr_review">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true &amp;&amp; leaveDays != null &amp;&amp; leaveDays >= 3 &amp;&amp; leaveDays &lt;= 5}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow4b" sourceRef="hr_review" targetRef="chro_approve" />
+    <sequenceFlow id="flow5b" sourceRef="chro_approve" targetRef="end_approved_medium" />
+    
+    <!-- 长假分支 (days > 5) -->
+    <sequenceFlow id="flow3c" sourceRef="leave_length_gateway" targetRef="hr_review">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true &amp;&amp; leaveDays != null &amp;&amp; leaveDays > 5}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow4c" sourceRef="chro_approve" targetRef="gm_final_approve" />
+    <sequenceFlow id="flow5c" sourceRef="gm_final_approve" targetRef="end_approved_long" />
+    
+    <!-- 拒绝流程 -->
+    <sequenceFlow id="flow_reject" sourceRef="leave_length_gateway" targetRef="end_rejected">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+    
+  </process>
+
+</definitions>

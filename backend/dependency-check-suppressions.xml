@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!--
+        工单审批流转系统 — OWASP 依赖漏洞扫描抑制规则
+
+        仅在确认误报或已通过其他方式缓解时添加抑制条目。
+        每条抑制必须包含：
+        1. 明确的 CVE 编号或包名
+        2. 抑制原因
+        3. 审批人与日期
+    -->
+
+    <!-- Spring Boot 2.7.x 已 EOL，已知 CVE 通过 Spring Security + 自有安全层缓解 -->
+    <!-- 示例：如需抑制特定 CVE，请按以下格式添加：
+    <suppress>
+        <packageUrl regex="true">^pkg:maven/org\.springframework\.boot/spring-boot-starter-web@.*$</packageUrl>
+        <cve>CVE-2024-XXXXX</cve>
+        <cve>CVE-2024-YYYYY</cve>
+    </suppress>
+    -->
+</suppressions>

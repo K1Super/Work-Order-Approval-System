@@ -1,0 +1,137 @@
+# ============================================================
+# 工单审批流转系统 - 主配置文件
+# 通过 spring.profiles.active 选择环境配置
+# 默认激活 dev 环境
+# ============================================================
+
+spring:
+  profiles:
+    active: dev  # 默认使用开发环境，生产环境改为 prod
+  application:
+    name: work-order-system
+
+  # Jackson日期格式化（OPTIMIZATION 四.4.4：统一 ISO-8601 + UTC 时区）
+  # - StdDateFormat：输出 ISO-8601 格式（如 2026-07-26T10:30:00.000+00:00），带时区偏移
+  # - time-zone: UTC：序列化/反序列化统一使用 UTC，无论部署在哪个时区都表示同一时刻
+  # - write-dates-as-timestamps: false：禁用时间戳格式，强制 ISO-8601
+  # 实体层使用 Instant/OffsetDateTime，TypeHandler 直接读写 TIMESTAMPTZ
+  jackson:
+    date-format: com.fasterxml.jackson.databind.util.StdDateFormat
+    time-zone: UTC
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      adjust-dates-to-context-time-zone: false
+
+  # 强制UTF-8编码（解决Windows系统中文乱码）
+  http:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+  # OPTIMIZATION 四.4.4：Hibernate JDBC 时区统一为 UTC
+  # 即使本项目以 MyBatis 为主，仍保留 Hibernate 配置以防万一使用 JPA 的场景
+  # 所有 TIMESTAMPTZ 字段在 JDBC 层按 UTC 解释，与数据库 timezone='UTC' 对齐
+  jpa:
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  # 文件上传配置
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+# MyBatis基础配置
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.workorder.entity
+  configuration:
+    map-underscore-to-camel-case: true
+
+# Flowable工作流配置
+flowable:
+  check-process-definitions: false
+  process-definition-location-prefix: classpath:/processes/
+  async-executor-activate: false
+  database-schema-update: true
+  history-level: full
+
+# 分页配置
+pagehelper:
+  helperDialect: postgresql
+  reasonable: true
+  supportMethodsArguments: true
+  params: count=countSql
+
+# ============================================================
+# Actuator 监控端点配置（企业级安全：默认关闭敏感端点）
+# 仅暴露 health/info/metrics/prometheus，env/heapdump/configprops 全局禁用
+# ============================================================
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info,metrics,prometheus
+        exclude: env,beans,configprops,heapdump,threaddump,loggers,mappings
+  endpoint:
+    health:
+      show-details: when-authorized
+    env:
+      enabled: false
+    heapdump:
+      enabled: false
+    configprops:
+      enabled: false
+    threaddump:
+      enabled: false
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+# ============================================================
+# Flyway 数据库版本迁移配置
+# 默认开启；V1__init.sql 创建全部表（包含 sys_password_history）
+# 生产环境 baseline-on-migrate=true 兼容已存在的非空库
+# ============================================================
+spring.flyway:
+  enabled: true
+  locations: classpath:db/migration
+  baseline-on-migrate: true
+  baseline-version: 0
+  validate-on-migrate: false
+
+# ============================================================
+# 应用层安全配置（自定义）
+# ============================================================
+work-order-system:
+  db:
+    auto-create: true
+  rate-limit:
+    login-per-minute: 5
+    approve-per-minute: 30
+    default-per-minute: 100
+  security:
+    csp:
+      script-src: "'self'"
+      style-src: "'self' 'unsafe-inline'"
+      img-src: "'self' data: https:"
+      connect-src: "'self'"
+    # OPTIMIZATION 三.3.2：Spring Security 内置 CSRF 防护
+    # 使用 CookieCsrfTokenRepository 将 XSRF-TOKEN 写入 Cookie，
+    # 前端 Axios 自动读取并注入 X-XSRF-TOKEN 头（废弃前端 HMAC 签名）
+    csrf:
+      enabled: true
+      cookie-name: XSRF-TOKEN
+      header-name: X-XSRF-TOKEN
+    # OPTIMIZATION 三.3.3：DEK 数据迁移开关（启动时为无 encrypted_dek 的用户生成 DEK）
+    # 数据迁移完成后可设为 false 加速启动
+    dek-migration:
+      enabled: true

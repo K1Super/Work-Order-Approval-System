@@ -1,0 +1,41 @@
+# Git属性配置 - 防止文件编码被Git转换导致乱码
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# 强制UTF-8编码
+*.java text working-tree-encoding=UTF-8
+*.xml text working-tree-encoding=UTF-8
+*.properties text working-tree-encoding=UTF-8
+*.yml text working-tree-encoding=UTF-8
+*.yaml text working-tree-encoding=UTF-8
+*.json text working-tree-encoding=UTF-8
+*.md text working-tree-encoding=UTF-8
+*.txt text working-tree-encoding=UTF-8
+*.html text working-tree-encoding=UTF-8
+*.css text working-tree-encoding=UTF-8
+*.js text working-tree-encoding=UTF-8
+*.vue text working-tree-encoding=UTF-8
+
+# 二进制文件 - 不进行编码转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.jar binary
+*.war binary
+*.class binary
+
+# Shell脚本使用LF换行
+*.sh text eol=lf
+
+# Windows批处理使用CRLF换行
+*.bat text eol=crlf
+
+# 禁止BOM头（防止Java编译失败）
+# Git会自动处理BOM问题，确保检出时无BOM

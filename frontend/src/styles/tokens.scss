@@ -1,0 +1,90 @@
+/* Design tokens — 透明通道 */
+:root {
+  /* Accent */
+  --color-accent: #1677ff;
+  --color-accent-hover: #3670ce;
+  --color-accent-active: #337be0;
+  --color-accent-soft: #e6f4ff;
+
+  /* Semantic */
+  --color-success: #67c23a;
+  --color-danger: #f56c6c;
+  --color-warning: #e6a23c;
+  --color-info: #909399;
+
+  /* Ink */
+  --color-ink: #1f2937;
+  --color-ink-body: #374151;
+  --color-ink-muted: #6b7280;
+  --color-ink-secondary: #606266;
+  --color-ink-placeholder: #a3a3a3;
+
+  /* Surface */
+  --color-surface-page: #f9fafb;
+  --color-surface-shell: #f5f7fa;
+  --color-surface-card: #ffffff;
+  --color-surface-sidebar-header: #f8f9fa;
+  --color-surface-hover: #f3f4f6;
+  --color-surface-muted: #fafafa;
+  --color-surface-inset: #f5f7fa;
+
+  /* Border */
+  --color-border: #e5e7eb;
+  --color-border-input: #d4d4d4;
+  --color-border-subtle: #ebeef5;
+  --color-border-divider: #dcdfe6;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-sidebar: 12px;
+
+  /* Spacing */
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+  --space-page: 20px;
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-sidebar: 300ms;
+
+  /* Z-index scale */
+  --z-overlay: 100;
+  --z-sidebar: 200;
+  --z-dropdown: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+
+  /* Element Plus theme bridge */
+  --el-color-primary: var(--color-accent);
+  --el-color-primary-light-3: #69b1ff;
+  --el-color-primary-light-5: #91caff;
+  --el-color-primary-light-7: #bae0ff;
+  --el-color-primary-light-8: #d6ebff;
+  --el-color-primary-light-9: var(--color-accent-soft);
+  --el-color-primary-dark-2: var(--color-accent-hover);
+  --el-border-radius-base: var(--radius-md);
+  --el-border-radius-small: var(--radius-sm);
+  --el-text-color-primary: var(--color-ink);
+  --el-text-color-regular: var(--color-ink-secondary);
+  --el-text-color-secondary: var(--color-ink-muted);
+  --el-text-color-placeholder: var(--color-ink-placeholder);
+  --el-border-color: var(--color-border-subtle);
+  --el-border-color-light: var(--color-border);
+  --el-fill-color-light: var(--color-surface-hover);
+  --el-bg-color: var(--color-surface-card);
+  --el-bg-color-page: var(--color-surface-page);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-sidebar: 0ms;
+  }
+}

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <process id="leave-approval-process" name="Leave Approval Process" isExecutable="true">
+    
+    <startEvent id="start" name="Submit Leave Request" />
+    
+    <userTask id="dept_manager_approve" name="Department Manager Approval" flowable:assignee="${deptManagerId}" />
+    
+    <exclusiveGateway id="approve_gateway" name="Approved?" />
+    
+    <endEvent id="end_approved" name="Approved" />
+    <endEvent id="end_rejected" name="Rejected" />
+    
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="dept_manager_approve" />
+    <sequenceFlow id="flow2" sourceRef="dept_manager_approve" targetRef="approve_gateway" />
+    <sequenceFlow id="flow3" sourceRef="approve_gateway" targetRef="end_approved">
+      <conditionExpression xsi:type="tFormalExpression">${approved == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow4" sourceRef="approve_gateway" targetRef="end_rejected">
+      <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+    </sequenceFlow>
+    
+  </process>
+
+</definitions>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <process id="reimbursement-approval-process" name="Reimbursement Approval Process" isExecutable="true">
+    
+    <startEvent id="start" name="Submit Reimbursement" />
+    
+    <userTask id="dept_manager_approve" name="Department Manager Approval" flowable:assignee="${deptManagerId}" />
+    
+    <exclusiveGateway id="amount_gateway" name="Large Amount?" />
+    
+    <userTask id="finance_review" name="Finance Review" flowable:assignee="${financeStaffId}" />
+    
+    <userTask id="director_approve" name="Director Final Approval" flowable:assignee="${directorId}" />
+    
+    <endEvent id="end_approved" name="Approved" />
+    <endEvent id="end_rejected" name="Rejected" />
+    
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="dept_manager_approve" />
+    <sequenceFlow id="flow2" sourceRef="dept_manager_approve" targetRef="amount_gateway" />
+    
+    <sequenceFlow id="flow3a" sourceRef="amount_gateway" targetRef="finance_review">
+      <conditionExpression xsi:type="tFormalExpression">${amount == null || amount &lt; 10000}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow4" sourceRef="finance_review" targetRef="end_approved" />
+    
+    <sequenceFlow id="flow3b" sourceRef="amount_gateway" targetRef="director_approve">
+      <conditionExpression xsi:type="tFormalExpression">${amount != null &amp;&amp; amount >= 10000}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow5" sourceRef="director_approve" targetRef="finance_review" />
+    
+  </process>
+
+</definitions>

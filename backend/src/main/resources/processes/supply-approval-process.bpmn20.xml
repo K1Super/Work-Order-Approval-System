@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <process id="supply-approval-process" name="Supply Request Process" isExecutable="true">
+    
+    <startEvent id="start" name="Submit Supply Request" />
+    
+    <userTask id="dept_manager_approve" name="Department Manager Approval" flowable:assignee="${deptManagerId}" />
+    
+    <userTask id="admin_distribute" name="Admin Distribution" flowable:assignee="${adminStaffId}" />
+    
+    <userTask id="applicant_confirm" name="Applicant Confirmation" flowable:assignee="${applicantId}" />
+    
+    <exclusiveGateway id="confirm_gateway" name="Confirmed?" />
+    
+    <endEvent id="end_completed" name="Completed" />
+    
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="dept_manager_approve" />
+    <sequenceFlow id="flow2" sourceRef="dept_manager_approve" targetRef="admin_distribute" />
+    <sequenceFlow id="flow3" sourceRef="admin_distribute" targetRef="applicant_confirm" />
+    <sequenceFlow id="flow4" sourceRef="applicant_confirm" targetRef="confirm_gateway" />
+    <sequenceFlow id="flow5" sourceRef="confirm_gateway" targetRef="end_completed">
+      <conditionExpression xsi:type="tFormalExpression">${confirmed == true}</conditionExpression>
+    </sequenceFlow>
+    
+  </process>
+
+</definitions>
