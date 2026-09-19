@@ -65,7 +65,9 @@ public class SysUserDeleteEventHandler {
       int marked = 0;
       for (WorkOrder wo : pendingOrders) {
         try {
-          int rows = workOrderMapper.appendRemarkForOrphanWorkOrder(wo.getId(), remarkAppend);
+          int rows =
+              workOrderMapper.appendRemarkForOrphanWorkOrder(
+                  wo.getId(), wo.getVersion(), remarkAppend);
           if (rows > 0) {
             marked++;
             logger.info(

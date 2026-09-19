@@ -8,7 +8,6 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 
 import org.apache.ibatis.annotations.Param;
@@ -30,7 +29,8 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>读取：优先按 {@link OffsetDateTime} 取值（TIMESTAMPTZ），再转 LocalDateTime； 若 JDBC 不支持则回退按 {@link
  *       Timestamp} 取值，再转 LocalDateTime。
- *   <li>写入：LocalDateTime 视为 UTC 时间，转 {@link OffsetDateTime}(UTC) 后写入， 保证 TIMESTAMPTZ 列存储一致；回退为
+ *   <li>写入：LocalDateTime 全链路视为服务器本地墙上时间（系统默认时区），按该时刻的本地偏移量转 {@link
+ *       OffsetDateTime} 后写入，与读取 atZoneSameInstant(systemDefault) 对称，保证 TIMESTAMPTZ 列存储同一瞬时值；回退为
  *       Timestamp 直接 set。
  * </ul>
  *
@@ -42,18 +42,20 @@ import org.springframework.stereotype.Component;
  */
 public class TimestamptzLocalDateTimeTypeHandler extends BaseTypeHandler<LocalDateTime> {
 
-  /** UTC 时区偏移，写入时统一使用 */
-  private static final ZoneOffset WRITE_ZONE = ZoneOffset.UTC;
-
   /**
-   * 写入参数：LocalDateTime → TIMESTAMPTZ 将 LocalDateTime 视为 UTC 时间，转 OffsetDateTime(UTC) 交给 JDBC 驱动。
+   * 写入参数：LocalDateTime → TIMESTAMPTZ
+   *
+   * <p>W-38 修复：LocalDateTime 全链路视为服务器本地墙上时间。写入时先按该时刻在系统默认时区（服务器本地）的偏移量转
+   * {@link OffsetDateTime}，与读取 atZoneSameInstant(systemDefault) 对称，保证 TIMESTAMPTZ 列存储的是同一瞬时值；
+   * 回退为 Timestamp 直接 set。
    */
   @Override
   public void setNonNullParameter(
       PreparedStatement ps, int i, LocalDateTime parameter, JdbcType jdbcType) throws SQLException {
     try {
-      // 优先用 OffsetDateTime 传参（适配 TIMESTAMPTZ 列）
-      OffsetDateTime odt = parameter.atOffset(WRITE_ZONE);
+      // 优先用 OffsetDateTime 传参（适配 TIMESTAMPTZ 列），偏移量取系统默认时区在该时刻的规则
+      OffsetDateTime odt =
+          parameter.atOffset(java.time.ZoneId.systemDefault().getRules().getOffset(parameter));
       ps.setObject(i, odt);
     } catch (Exception e) {
       // 回退：用 java.sql.Timestamp（兼容旧驱动）

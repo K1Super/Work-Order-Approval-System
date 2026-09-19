@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login as apiLogin, getCurrentUser, logout as apiLogout, refreshToken } from '@/api/auth'
 import { getCachedUserInfo, setCachedUserInfo, removeToken } from '@/utils/auth'
+import { resetRouter } from '@/router'
 
 // ============================================================
 // OPTIMIZATION 三.3.1 用户状态管理（Token 迁移至 HttpOnly Cookie）
@@ -29,13 +30,9 @@ export const useUserStore = defineStore('user', () => {
 
   // 登录
   async function login(loginForm) {
-    try {
-      const res = await apiLogin(loginForm)
-      setLoginResult(res.data)
-      return res
-    } catch (error) {
-      throw error
-    }
+    const res = await apiLogin(loginForm)
+    setLoginResult(res.data)
+    return res
   }
 
   // 直接保存登录结果（避免重复调用登录 API）
@@ -98,6 +95,8 @@ export const useUserStore = defineStore('user', () => {
     permissions.value = []
     isUserInfoLoaded.value = false
     removeToken()
+    // W-45：回收动态权限路由，防止同标签换账号后残留上一个账号的越权路由
+    resetRouter()
   }
 
   // 刷新 Token（OPTIMIZATION 三.3.1：后端自动更新 Cookie）

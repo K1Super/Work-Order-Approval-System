@@ -1,12 +1,22 @@
 package com.workorder.interceptor;
 
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import javax.servlet.ReadListener;
+import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpServletResponse;
 
 import org.slf4j.Logger;
@@ -33,7 +43,7 @@ public class SqlInjectionInterceptor implements HandlerInterceptor {
   private static final Logger securityLogger = LoggerFactory.getLogger("SECURITY_VIOLATION_LOGGER");
 
   /**
-   * SQL 注入特征正则（仅匹配真实注入模式） - UNION SELECT：联合查询注入 - OR 1=1 / AND 1=1：恒真条件注入 - --：SQL 注释 - ;
+   * SQL 注入特征正则（仅匹配真实注入模式） - UNION SELECT：联合查询注入 - OR 1=1 / AND 1=1：恒真条件注入 - -- 注释注入（-- 后须跟空白或行尾，避免误伤正常文本中的连字符）- ;
    * DROP：堆叠查询删除表 - ; SELECT/INSERT/UPDATE/DELETE：堆叠查询 - INSERT INTO / DELETE FROM / UPDATE ...
    * SET：完整语句注入 - 斜杠星 块注释（slash-star star-slash）
    */
@@ -41,7 +51,7 @@ public class SqlInjectionInterceptor implements HandlerInterceptor {
     Pattern.compile("(?i)\\bunion\\s+(all\\s+)?select\\b"),
     Pattern.compile("(?i)\\bor\\s+1\\s*=\\s*1\\b"),
     Pattern.compile("(?i)\\band\\s+1\\s*=\\s*1\\b"),
-    Pattern.compile("--"),
+    Pattern.compile("--\\s|--$"),
     Pattern.compile("(?i);\\s*drop\\b"),
     Pattern.compile("(?i);\\s*(select|insert|update|delete)\\b"),
     Pattern.compile("(?i)\\binsert\\s+into\\b"),
@@ -75,7 +85,120 @@ public class SqlInjectionInterceptor implements HandlerInterceptor {
       }
     }
 
+    // 校验 JSON 请求体（POST/PUT/PATCH + application/json，覆盖 @RequestBody 绑定的 JSON 入参）
+    if (!scanJsonBody(request, response, method, requestUri, clientIp)) {
+      return false;
+    }
+
     return true;
+  }
+
+  /**
+   * 覆盖 JSON 请求体扫描：当 Content-Type 为 application/json 且方法为 POST/PUT/PATCH 时， 用包装流读取全部请求体并以整体文本走
+   * containsSqlInjection 检测；无法包装时对已读取字节检测后放行（记录 debug 日志）。
+   */
+  private boolean scanJsonBody(
+      HttpServletRequest request,
+      HttpServletResponse response,
+      String method,
+      String requestUri,
+      String clientIp)
+      throws Exception {
+    String contentType = request.getContentType();
+    if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+      return true;
+    }
+    if (!("POST".equalsIgnoreCase(method)
+        || "PUT".equalsIgnoreCase(method)
+        || "PATCH".equalsIgnoreCase(method))) {
+      return true;
+    }
+
+    byte[] bodyBytes;
+    try {
+      // 包装流读取：构造时缓存全部字节，后续仍可通过 getInputStream() 重复供 @RequestBody 读取
+      CachedBodyHttpServletRequest cachedRequest = new CachedBodyHttpServletRequest(request);
+      bodyBytes = cachedRequest.getBody();
+    } catch (IOException e) {
+      // 无法包装（请求体可能已被上游组件消费）：对无法读取的 JSON body 放行并记录 debug，避免误伤正常请求
+      logger.debug(
+          "无法读取 JSON 请求体进行 SQL 注入检测，放行请求: method={}, uri={}, reason={}",
+          method,
+          requestUri,
+          e.getMessage());
+      return true;
+    }
+
+    if (bodyBytes == null || bodyBytes.length == 0) {
+      return true;
+    }
+
+    String jsonBody = new String(bodyBytes, StandardCharsets.UTF_8);
+    if (containsSqlInjection(jsonBody)) {
+      logSecurityViolation(request, method, requestUri, "JSON_BODY", jsonBody, clientIp);
+      sendErrorResponse(response, "检测到非法输入，请检查您的请求内容");
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 缓存请求体的请求包装器：构造时读取全部字节，通过 getInputStream()/getReader() 重新放回， 避免扫描 JSON body 后影响后续
+   * @RequestBody 的反序列化。
+   */
+  private static class CachedBodyHttpServletRequest extends HttpServletRequestWrapper {
+
+    private final byte[] cachedBody;
+
+    CachedBodyHttpServletRequest(HttpServletRequest request) throws IOException {
+      super(request);
+      this.cachedBody = readFully(request.getInputStream());
+    }
+
+    byte[] getBody() {
+      return cachedBody;
+    }
+
+    @Override
+    public ServletInputStream getInputStream() throws IOException {
+      final ByteArrayInputStream bais = new ByteArrayInputStream(cachedBody);
+      return new ServletInputStream() {
+        @Override
+        public boolean isFinished() {
+          return bais.available() == 0;
+        }
+
+        @Override
+        public boolean isReady() {
+          return true;
+        }
+
+        @Override
+        public void setReadListener(ReadListener readListener) {
+          /* 同步读取，无需异步监听 */
+        }
+
+        @Override
+        public int read() {
+          return bais.read();
+        }
+      };
+    }
+
+    @Override
+    public BufferedReader getReader() throws IOException {
+      return new BufferedReader(new InputStreamReader(getInputStream(), StandardCharsets.UTF_8));
+    }
+
+    private static byte[] readFully(InputStream in) throws IOException {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      byte[] buffer = new byte[1024];
+      int len;
+      while ((len = in.read(buffer)) != -1) {
+        out.write(buffer, 0, len);
+      }
+      return out.toByteArray();
+    }
   }
 
   /** 检测值是否包含 SQL 注入特征 */

@@ -29,10 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -42,28 +42,30 @@ jobs:
         working-directory: backend
         run: mvn dependency:tree -DoutputFile=deps.txt -q
 
-      - name: OWASP Dependency-Check
-        uses: dependency-check/Dependency-Check_Action@main
-        with:
-          project: 'work-order-approval-system'
-          path: 'backend'
-          format: 'HTML,JSON,SARIF'
-          args: >
-            --enableRetired
-            --failOnCVSS 7
+      # W-19 修复：统一使用 Maven 插件 org.owasp:dependency-check-maven:9.0.9:check
+      # （不再用 dependency-check/Dependency-Check_Action@main，保证扫描可复现、结果一致）。
+      # 抑制文件经 -DsuppressionFiles 注入（Maven 插件等价于 CLI 的 --suppression）。
+      - name: OWASP Dependency-Check（Maven 插件 9.0.9）
+        working-directory: backend
+        run: |
+          mvn -B org.owasp:dependency-check-maven:9.0.9:check \
+            -Dformat=HTML,JSON,SARIF \
+            -DenableRetired=true \
+            -DfailBuildOnCVSS=7 \
+            -DsuppressionFiles=dependency-check-suppression.xml
 
       - name: 上传扫描结果
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: dependency-check-report
-          path: reports/
+          path: target/dependency-check-report.*
 
       - name: 上传 SARIF 到 GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         if: always()
         with:
-          sarif_file: reports/dependency-check-report.sarif
+          sarif_file: target/dependency-check-report.sarif
 
   # ============================================================
   # 前端依赖漏洞扫描（npm audit）
@@ -73,10 +75,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -106,10 +108,10 @@ jobs:
         language: ['java', 'javascript']
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         with:
           languages: ${{ matrix.language }}
           # 使用默认的安全查询包
@@ -117,7 +119,7 @@ jobs:
 
       - name: Setup JDK 17（Java 构建）
         if: matrix.language == 'java'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -129,7 +131,7 @@ jobs:
         run: mvn -B compile -DskipTests
 
       - name: 执行 CodeQL 分析
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
         with:
           category: "/language:${{ matrix.language }}"
 
@@ -141,12 +143,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0  # 完整历史，扫描所有提交
 
       - name: gitleaks 密钥扫描
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: true

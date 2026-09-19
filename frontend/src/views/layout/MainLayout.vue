@@ -168,12 +168,11 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UserFilled, ArrowDown, Menu } from '@element-plus/icons-vue'
 
-const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
@@ -197,9 +196,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', checkScreenSize)
 })
-
-// 当前激活的菜单
-const activeMenu = computed(() => route.path)
 
 // 侧边栏宽度（桌面端固定，移动端动态）
 const sidebarWidth = computed(() => {
@@ -243,13 +239,6 @@ const isSuperAdmin = computed(() => userRoleCodes.value.includes('SUPER_ADMIN'))
 const isSuperAdminOrDeptAdmin = computed(() =>
   isSuperAdmin.value ||
   userRoleCodes.value.some(code => DEPT_ADMIN_ROLE_CODES.includes(code))
-)
-
-// 是否为管理员（超级管理员 / 安全审计 / 董事长 / 总经理 / 副总经理）
-const isAdmin = computed(() =>
-  userRoleCodes.value.some(code =>
-    ['SUPER_ADMIN', 'SECURITY_AUDIT', 'CHAIRMAN', 'GM', 'VP'].includes(code)
-  )
 )
 
 // 是否可以访问待我审批（有 workorder:approve 权限，但系统级用户无需审批）

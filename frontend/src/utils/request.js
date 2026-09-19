@@ -1,9 +1,8 @@
 import axios from 'axios'
 import { ElNotification } from 'element-plus'
 import { useUserStore } from '@/store/user'
-import { removeToken } from '@/utils/auth'
 import router from '@/router'
-import { RESULT_CODE, BIZ_CODE, isSuccess, isUnauthorized } from '@/constants'
+import { isSuccess, isUnauthorized } from '@/constants'
 import { showErrorWithDebounce } from '@/hooks/useDebouncedMessage'
 import logger from '@/utils/logger'
 
@@ -116,19 +115,21 @@ service.interceptors.response.use(
       const responseData = error.response.data
       const status = error.response.status
 
-      // 优先显示后端返回的业务错误消息（Result.msg）
-      if (responseData?.msg) {
+      // W-43：HTTP 401 无论是否携带 msg 都必须触发登录跳转
+      // （旧逻辑仅在「无 msg」时才走 switch 分支执行 401 处理，
+      //   携带 msg 的 401 被 if 分支吞掉，导致不跳登录页）
+      if (status === 401) {
+        message = responseData?.msg || '未授权，请重新登录'
+        // 排除 logout/登录等 skipAuthError 请求，避免退出时弹窗干扰与登录接口循环跳转
+        if (!error.config?.skipAuthError) {
+          handleUnauthorized()
+        }
+      } else if (responseData?.msg) {
+        // 优先显示后端返回的业务错误消息（Result.msg）
         message = responseData.msg
       } else {
         // 根据HTTP状态码显示通用错误
         switch (status) {
-          case 401:
-            message = '未授权，请重新登录'
-            // 排除logout请求，避免退出时弹窗干扰
-            if (!error.config?.skipAuthError) {
-              handleUnauthorized()
-            }
-            break
           case 403:
             // OPTIMIZATION 三.3.2：CSRF Token 缺失/不匹配返回 403
             // 可能是首次访问尚未获取 XSRF-TOKEN Cookie，提示用户刷新页面

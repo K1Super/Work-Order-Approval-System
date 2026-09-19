@@ -215,8 +215,7 @@ async function fetchProcessData() {
   loading.value = true
   try {
     // 获取审批日志用于构建流程图数据
-    const res = await getApprovalLog(route.params.id)
-    const logs = res.data || []
+    await getApprovalLog(route.params.id)
 
     // TODO: 根据实际日志数据动态构建流程图的节点和连线
 

@@ -38,25 +38,14 @@ public class WorkOrderEventListener {
 
   @Autowired private IOrderProcessLinkService orderProcessLinkService;
 
-  /** 工单提交事件处理 - 创建 order_process_link 关联记录（架构解耦核心） - 记录 SUBMIT 审计日志 - 通知申请人 */
+  /** 工单提交事件处理 - W-13 修复：order_process_link 已由主事务同步持久化，此处不再重复创建 - 记录 SUBMIT 审计日志 - 通知申请人 */
   @Async
   @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
   public void handleWorkOrderSubmitted(WorkOrderSubmittedEvent event) {
-    // 1. 创建 OrderProcessLink（OPTIMIZATION 一：解耦流程引擎与业务表）
-    if (event.getProcessInstanceId() != null) {
-      boolean created =
-          orderProcessLinkService.createLink(
-              event.getWorkOrderId(), event.getProcessInstanceId(), event.getProcessDefinitionId());
-      if (!created) {
-        logger.error(
-            "[事件处理] OrderProcessLink 创建失败 - workOrderId={}, 由对账任务修复", event.getWorkOrderId());
-      }
-    }
-
-    // 2. 记录审计日志
+    // 1. 记录审计日志
     logAuditEvent(event, ApprovalActionEnum.SUBMIT);
 
-    // 3. 通知申请人
+    // 2. 通知申请人
     notifyApplicant(event, "您的工单已提交，等待审批");
   }
 

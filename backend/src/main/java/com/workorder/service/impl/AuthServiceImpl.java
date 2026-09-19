@@ -12,6 +12,7 @@ import javax.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -31,6 +32,7 @@ import com.workorder.entity.User;
 import com.workorder.security.CustomUserDetails;
 import com.workorder.security.EncryptionHelper;
 import com.workorder.security.JwtUtil;
+import com.workorder.security.TokenVersionCache;
 import com.workorder.service.IAuthService;
 import com.workorder.service.IPasswordPolicyService;
 import com.workorder.service.ISecurityAuditService;
@@ -68,11 +70,18 @@ public class AuthServiceImpl implements IAuthService {
 
   @Autowired private MetricsConfig metricsConfig;
 
+  /** tokenVersion 二级缓存（注销/改密后失效） */
+  @Autowired private TokenVersionCache tokenVersionCache;
+
   /** 加密上下文辅助工具（OPTIMIZATION 三.3.3 per-user DEK） */
   @Autowired private EncryptionHelper encryptionHelper;
 
   /** Token prefix in Redis */
   private static final String TOKEN_PREFIX = "auth:token:";
+
+  /** 反代白名单（逗号分隔 IP）— W-16：仅当 remoteAddr 命中白名单时才信任 XFF 等代理头 */
+  @Value("${work-order-system.rate-limit.trusted-proxies:}")
+  private String trustedProxies;
 
   /** Default token expiration time (hours) */
   private static final long DEFAULT_TOKEN_EXPIRE_HOURS = 24;
@@ -318,6 +327,7 @@ public class AuthServiceImpl implements IAuthService {
 
       // Step A: Record failed attempt in password policy service
       Object attemptResult = null;
+      String lockedMessage = null;
       try {
         attemptResult = passwordPolicyService.recordFailedLoginAttempt(username, clientIp);
 
@@ -352,7 +362,9 @@ public class AuthServiceImpl implements IAuthService {
                 logger.warn("记录锁定审计日志失败: {}", auditEx.getMessage());
               }
 
-              throw new BusinessException(policyMessage);
+              // 修复：不在内层 try 中直接 throw —— 会被下方 catch (Exception reflectEx) 吞掉，
+              // 导致锁定账号仍返回「用户名或密码错误」。先记录消息，Step B 审计完成后统一抛出。
+              lockedMessage = policyMessage;
             }
 
             logger.warn("登录失败统计: {}", policyMessage);
@@ -372,6 +384,11 @@ public class AuthServiceImpl implements IAuthService {
         logger.debug("已记录登录失败审计日志");
       } catch (Exception auditEx) {
         logger.warn("记录审计日志失败: {}", auditEx.getMessage());
+      }
+
+      // 账号已锁定：抛出业务异常（位于 reflectEx 的 catch 之外，确保不被吞掉）
+      if (lockedMessage != null) {
+        throw new BusinessException(lockedMessage);
       }
 
       // Step C: Determine friendly error message based on exception type
@@ -420,7 +437,11 @@ public class AuthServiceImpl implements IAuthService {
   }
 
   /**
-   * Get client IP address from request context 从请求上下文中获取客户端IP地址
+   * Get client IP address from request context 从请求上下文中获取客户端IP地址。
+   *
+   * <p>W-16：账号锁定/审计键一律以 request.getRemoteAddr() 为准（伪造 XFF 不能绕锁）。
+   * 仅当 remoteAddr 命中配置的反代白名单（work-order-system.rate-limit.trusted-proxies）时，
+   * 才回退解析 XFF/X-Real-IP 等代理头；否则直接返回 RemoteAddr。
    *
    * @return Client IP address or "unknown" if unavailable
    */
@@ -432,7 +453,12 @@ public class AuthServiceImpl implements IAuthService {
       if (attributes != null) {
         HttpServletRequest request = attributes.getRequest();
 
-        // Check various headers for real IP (behind proxy/load balancer)
+        String remoteAddr = request.getRemoteAddr();
+        if (!isTrustedProxy(remoteAddr)) {
+          return (remoteAddr != null && !remoteAddr.isEmpty()) ? remoteAddr : "unknown";
+        }
+
+        // 仅信任白名单内的反向代理：才解析 X-Forwarded-For 等代理头
         String ip = request.getHeader("X-Forwarded-For");
         if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
           ip = request.getHeader("Proxy-Client-IP");
@@ -458,6 +484,23 @@ public class AuthServiceImpl implements IAuthService {
       logger.debug("获取客户端IP失败: {}", e.getMessage());
     }
     return "unknown";
+  }
+
+  /** 判断远端地址是否为配置的反代白名单成员（精确匹配，支持 IPv4/IPv6 字面量） */
+  private boolean isTrustedProxy(String remoteAddr) {
+    if (remoteAddr == null || remoteAddr.isEmpty()) {
+      return false;
+    }
+    if (trustedProxies == null || trustedProxies.trim().isEmpty()) {
+      return false;
+    }
+    for (String proxy : trustedProxies.split(",")) {
+      String candidate = proxy.trim();
+      if (!candidate.isEmpty() && candidate.equals(remoteAddr)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -537,7 +580,7 @@ public class AuthServiceImpl implements IAuthService {
 
     } catch (Exception e) {
       logger.error("获取用户信息失败: userId={}, error={}", userId, e.getMessage(), e);
-      return Result.error("获取用户信息失败: " + e.getMessage());
+      return Result.error("获取用户信息失败，请稍后重试");
     }
   }
 
@@ -567,6 +610,7 @@ public class AuthServiceImpl implements IAuthService {
           int bumped = userMapper.incrementTokenVersion(userId);
           if (bumped > 0) {
             logger.info("用户 {} 注销时 token_version 已递增（旧 Token 立即失效）", userId);
+            tokenVersionCache.evict(userId);
           }
         } catch (Exception bumpEx) {
           logger.warn("注销时递增 token_version 失败（不影响注销）: {}", bumpEx.getMessage());
@@ -746,7 +790,7 @@ public class AuthServiceImpl implements IAuthService {
 
     } catch (Exception e) {
       logger.error("Token刷新失败: error={}", e.getMessage(), e);
-      return Result.error("Token刷新失败: " + e.getMessage());
+      return Result.error("Token刷新失败，请稍后重试");
     }
   }
 
@@ -771,7 +815,7 @@ public class AuthServiceImpl implements IAuthService {
 
     } catch (Exception e) {
       logger.error("注册请求处理失败: error={}", e.getMessage(), e);
-      return Result.error("注册请求处理失败: " + e.getMessage());
+      return Result.error("注册请求处理失败，请稍后重试");
     }
   }
 
@@ -840,6 +884,7 @@ public class AuthServiceImpl implements IAuthService {
           int bumped = userMapper.incrementTokenVersion(userId);
           if (bumped > 0) {
             logger.info("用户 {} 的 token_version 已递增（旧 Token 立即失效）", userId);
+            tokenVersionCache.evict(userId);
           } else {
             logger.warn("用户 {} 的 token_version 递增返回 0 行（可能用户已被删除）", userId);
           }
@@ -876,7 +921,7 @@ public class AuthServiceImpl implements IAuthService {
 
     } catch (Exception e) {
       logger.error("密码修改异常: error={}", e.getMessage(), e);
-      return Result.error("密码修改失败: " + e.getMessage());
+      return Result.error("密码修改失败，请稍后重试");
     }
   }
 }

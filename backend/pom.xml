@@ -177,6 +177,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Spring Security Test（@WithMockUser/@WithUserDetails、MockMvc 安全链测试） -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- SpringDoc OpenAPI（规范 §1 自动化检验 — API 文档自动生成与校验） -->
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -281,9 +288,10 @@
                     <configLocation>checkstyle.xml</configLocation>
                     <inputEncoding>UTF-8</inputEncoding>
                     <consoleOutput>true</consoleOutput>
-                    <failsOnError>false</failsOnError>
+                    <!-- CI 硬门禁：任何 checkstyle 违规直接阻断构建（本地 mvn validate/test 同步生效） -->
+                    <failsOnError>true</failsOnError>
                     <linkXRef>false</linkXRef>
-                    <includeTestSourceDirectory>false</includeTestSourceDirectory>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
                 </configuration>
                 <executions>
                     <execution>
@@ -316,4 +324,93 @@
             </plugin>
         </plugins>
     </build>
+
+    <!-- ============================================================
+         集成测试 profile（mvn verify -Pit 激活）
+         - 真实 PostgreSQL 测试库（work_order_it）在 pre-integration-test 阶段重建
+         - failsafe 仅在此 profile 绑定执行 *IT.java（普通 mvn test 不触发）
+         - 连接参数可通过 -Dit.db.host / -Dit.db.port / -Dit.db.user / -Dit.db.password 覆盖（CI 使用）
+         - 跳过集成测试：mvn verify -Pit -DskipITs=true
+         ============================================================ -->
+    <profiles>
+        <profile>
+            <id>it</id>
+            <properties>
+                <it.db.host>localhost</it.db.host>
+                <it.db.port>5432</it.db.port>
+                <it.db.user>postgres</it.db.user>
+                <it.db.password></it.db.password>
+                <it.redis.host>localhost</it.redis.host>
+                <it.redis.port>6379</it.redis.port>
+                <skipITs>false</skipITs>
+            </properties>
+            <build>
+                <plugins>
+                    <!-- 重建集成测试数据库（drop/create，幂等） -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>sql-maven-plugin</artifactId>
+                        <version>1.5</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.postgresql</groupId>
+                                <artifactId>postgresql</artifactId>
+                                <version>${postgresql.version}</version>
+                            </dependency>
+                        </dependencies>
+                        <executions>
+                            <execution>
+                                <id>recreate-it-database</id>
+                                <phase>pre-integration-test</phase>
+                                <goals>
+                                    <goal>execute</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${skipITs}</skip>
+                                    <driver>org.postgresql.Driver</driver>
+                                    <url>jdbc:postgresql://${it.db.host}:${it.db.port}/postgres</url>
+                                    <username>${it.db.user}</username>
+                                    <password>${it.db.password}</password>
+                                    <autocommit>true</autocommit>
+                                    <srcFiles>
+                                        <srcFile>src/test/resources/it/setup-db.sql</srcFile>
+                                    </srcFiles>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- failsafe：仅 it profile 运行 *IT.java 集成测试 -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>2.22.2</version>
+                        <configuration>
+                            <skipITs>${skipITs}</skipITs>
+                            <includes>
+                                <include>**/*IT.java</include>
+                            </includes>
+                            <systemPropertyVariables>
+                                <spring.profiles.active>it</spring.profiles.active>
+                                <IT_DB_HOST>${it.db.host}</IT_DB_HOST>
+                                <IT_DB_PORT>${it.db.port}</IT_DB_PORT>
+                                <IT_DB_USER>${it.db.user}</IT_DB_USER>
+                                <IT_DB_PASSWORD>${it.db.password}</IT_DB_PASSWORD>
+                                <IT_REDIS_HOST>${it.redis.host}</IT_REDIS_HOST>
+                                <IT_REDIS_PORT>${it.redis.port}</IT_REDIS_PORT>
+                            </systemPropertyVariables>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

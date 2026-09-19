@@ -13,8 +13,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.stereotype.Component;
 
 /**
@@ -49,13 +47,8 @@ public class DatabaseInitializer implements CommandLineRunner {
     try (Connection connection = dataSource.getConnection()) {
       setUtf8Encoding(connection);
 
-      boolean needsInit = checkIfNeedsInitialization(connection);
-
-      if (needsInit) {
-        executeSchemaInit(connection);
-      } else {
-        verifyDataIntegrity(connection);
-      }
+      // Schema 事实源已统一为 Flyway（V1~V12），不再加载已废弃为空脚本的 sql/schema-init.sql。
+      verifyDataIntegrity(connection);
 
       logSystemStatus(connection);
 
@@ -71,30 +64,6 @@ public class DatabaseInitializer implements CommandLineRunner {
       stmt.execute("SET NAMES 'UTF-8'");
       stmt.execute("SET client_encoding TO 'UTF-8'");
     }
-  }
-
-  private boolean checkIfNeedsInitialization(Connection connection) throws SQLException {
-    try (Statement stmt = connection.createStatement();
-        var rs =
-            stmt.executeQuery(
-                "SELECT COUNT(*) FROM information_schema.tables "
-                    + "WHERE table_name = 'sys_user' AND table_schema = 'public'")) {
-      if (!rs.next() || rs.getInt(1) == 0) return true;
-    }
-
-    try (Statement stmt = connection.createStatement();
-        var rs = stmt.executeQuery("SELECT COUNT(*) FROM sys_user WHERE username = 'KLord'")) {
-      return !rs.next() || rs.getInt(1) == 0;
-    } catch (SQLException e) {
-      return true;
-    }
-  }
-
-  private void executeSchemaInit(Connection connection) throws Exception {
-    logger.info("Executing schema initialization...");
-    ClassPathResource resource = new ClassPathResource("sql/schema-init.sql");
-    ScriptUtils.executeSqlScript(connection, resource);
-    logger.info("Schema initialization completed");
   }
 
   private void verifyDataIntegrity(Connection connection) throws Exception {

@@ -41,10 +41,14 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+# W-07 修复：明文管理员凭证文件禁止入库（历史已含，需清理 git 历史）
+admin.json
 application-local.yml
 application-local.properties
-application-prod.yml
 application-prod.properties
+# W-17 修复：application-prod.yml 敏感值全部使用 ${ENV_VAR}（无默认值，缺省启动即失败），
+# 无明文落盘，允许入库便于生产配置受控与键名校验；properties 版本仍排除
+!backend/src/main/resources/application-prod.yml
 *.pem
 *.key
 *.p12

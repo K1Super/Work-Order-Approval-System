@@ -19,6 +19,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workorder.common.constant.RoleConstants;
+import com.workorder.common.exception.BusinessException;
 import com.workorder.dao.UserMapper;
 import com.workorder.dao.WorkOrderMapper;
 import com.workorder.entity.User;
@@ -527,7 +528,8 @@ public class DataSecurityServiceImpl implements IDataSecurityService {
       return null;
     } catch (Exception e) {
       logger.error("Failed to determine functional type for user: {}", user.getId(), e);
-      return null;
+      // W-29：fail-close，角色查询异常时禁止放弃职能隔离，避免列表越过部门/数据范围条件
+      throw new BusinessException("数据权限校验失败，无法加载列表");
     }
   }
 

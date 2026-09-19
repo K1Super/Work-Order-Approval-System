@@ -119,7 +119,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -127,7 +127,6 @@ import { getWorkOrderDetail, handleApproval, resubmitWorkOrder } from '@/api/wor
 import { formatDateTime, ORDER_STATUS_MAP, ORDER_TYPE_MAP, PRIORITY_MAP, WORK_ORDER_STATUS } from '@/utils/common'
 
 const route = useRoute()
-const router = useRouter()
 const userStore = useUserStore()
 
 const loading = ref(false)

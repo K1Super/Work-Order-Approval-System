@@ -37,12 +37,34 @@ const server = http.createServer((req, res) => {
     return proxyRequest(req, res);
   }
 
-  // Static files from dist
-  let filePath = path.join(DIST_DIR, req.url === '/' ? 'index.html' : req.url);
-  
-  // SPA fallback
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(DIST_DIR, 'index.html');
+  // 静态文件：先剥掉 query string，再做路径穿越防护
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch (e) {
+    // 非法百分号编码等，直接拒绝
+    res.writeHead(400);
+    res.end('Bad Request');
+    return;
+  }
+
+  // 归一化后拼接，再校验结果仍位于 dist/ 内（防 ../ 穿越读取工程源码）
+  const distRoot = path.normalize(DIST_DIR);
+  let filePath = path.normalize(path.join(distRoot, pathname === '/' ? 'index.html' : pathname));
+  const relative = path.relative(distRoot, filePath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
+  }
+
+  // 目录请求回退 index.html；不存在路径走 SPA fallback
+  try {
+    if (fs.statSync(filePath).isDirectory()) {
+      filePath = path.join(distRoot, 'index.html');
+    }
+  } catch (e) {
+    filePath = path.join(distRoot, 'index.html');
   }
 
   if (!fs.existsSync(filePath)) {

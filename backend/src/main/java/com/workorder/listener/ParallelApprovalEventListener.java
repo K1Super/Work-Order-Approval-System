@@ -16,6 +16,7 @@ import org.flowable.identitylink.api.IdentityLink;
 import org.flowable.task.api.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
@@ -43,7 +44,13 @@ public class ParallelApprovalEventListener implements FlowableEventListener {
   /** 候选人缓存 TTL（小时） */
   private static final long CANDIDATE_CACHE_TTL_HOURS = 24;
 
-  @Autowired private TaskService taskService;
+  /**
+   * TaskService 惰性注入（W-14：避免注册期循环依赖）。
+   *
+   * <p>本监听器由 FlowableConfig 在引擎创建期间通过 setEventListeners 注册， 而 TaskService 依赖 ProcessEngine。
+   * 若在构造期强依赖 TaskService，会在引擎创建阶段形成循环依赖。 使用 ObjectProvider 惰性获取，运行时才解析。
+   */
+  @Autowired private ObjectProvider<TaskService> taskServiceProvider;
 
   @Autowired private RedisTemplate<String, Object> redisTemplate;
 
@@ -100,6 +107,11 @@ public class ParallelApprovalEventListener implements FlowableEventListener {
 
       // 2. 候选用户/组
       try {
+        TaskService taskService = taskServiceProvider.getIfAvailable();
+        if (taskService == null) {
+          logger.warn("TaskService 尚未就绪，跳过候选人缓存: taskId={}", task.getId());
+          return;
+        }
         List<IdentityLink> links = taskService.getIdentityLinksForTask(task.getId());
         if (links != null) {
           for (IdentityLink link : links) {
@@ -153,10 +165,21 @@ public class ParallelApprovalEventListener implements FlowableEventListener {
     return false;
   }
 
-  /** 支持的事件类型（null 表示支持所有类型，由 onEvent 内部过滤） */
+  /**
+   * 支持的事件类型：仅注册本监听器实际处理的三类任务事件。
+   *
+   * <p>修复说明（集成测试启动期暴露）：原实现返回 null 语义上表示「支持所有类型」，但 Flowable
+   * 引擎在初始化时以 addEventListener(listener, listener.getTypes()) 方式注册，null 会被当作
+   * null 数组展开 varargs 触发 NPE，导致引擎初始化失败。此处显式返回实际处理的
+   * TASK_CREATED / TASK_COMPLETED / ENTITY_DELETED（见 onEvent 分发逻辑），从根上消除歧义。
+   */
   @Override
-  public java.util.Set<org.flowable.common.engine.api.delegate.event.FlowableEventType> getTypes() {
-    return null;
+  public Set<FlowableEventType> getTypes() {
+    Set<FlowableEventType> types = new HashSet<>();
+    types.add(FlowableEngineEventType.TASK_CREATED);
+    types.add(FlowableEngineEventType.TASK_COMPLETED);
+    types.add(FlowableEngineEventType.ENTITY_DELETED);
+    return types;
   }
 
   /** 事务状态 */

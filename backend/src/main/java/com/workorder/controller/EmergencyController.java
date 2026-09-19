@@ -74,7 +74,7 @@ public class EmergencyController {
 
     } catch (Exception e) {
       logger.error("[EMERGENCY] 紧急解锁全部账号失败", e);
-      return Result.error("解锁失败: " + e.getMessage());
+      return Result.error("解锁失败，请稍后重试");
     }
   }
 
@@ -109,7 +109,7 @@ public class EmergencyController {
 
     } catch (Exception e) {
       logger.error("[EMERGENCY] 紧急解锁账号 {} 失败", username, e);
-      return Result.error("解锁失败: " + e.getMessage());
+      return Result.error("解锁失败，请稍后重试");
     }
   }
 
@@ -139,7 +139,7 @@ public class EmergencyController {
 
     } catch (Exception e) {
       logger.error("[EMERGENCY] 查询锁定账号失败", e);
-      return Result.error("查询失败: " + e.getMessage());
+      return Result.error("查询失败，请稍后重试");
     }
   }
 }

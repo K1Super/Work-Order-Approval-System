@@ -1,0 +1,83 @@
+# ============================================================
+# 集成测试专用配置（仅由 failsafe 以系统属性 spring.profiles.active=it 激活，
+# 覆盖 application.yml 中的默认 profile=dev，绝不参与任何真实环境运行）
+# 密钥均为「仅测试用」固定值，禁止用于生产（生产仍强制环境变量，见 application-prod.yml）
+# ============================================================
+
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    # 测试库由 sql-maven-plugin 在 pre-integration-test 阶段重建（见 src/test/resources/it/setup-db.sql）
+    url: jdbc:postgresql://${IT_DB_HOST:localhost}:${IT_DB_PORT:5432}/work_order_it?stringtype=unspecified
+    username: ${IT_DB_USER:postgres}
+    password: ${IT_DB_PASSWORD:}
+  redis:
+    host: ${IT_REDIS_HOST:localhost}
+    port: ${IT_REDIS_PORT:6379}
+    password: ${IT_REDIS_PASSWORD:}
+    # 使用独立 database 1，避免与本地开发库（database 0）数据互相污染
+    database: 1
+  task:
+    scheduling:
+      # 关闭 @Scheduled 定时任务（分区维护/数据对账），避免干扰集成测试
+      enabled: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: false
+
+flowable:
+  check-process-definitions: false
+  process-definition-location-prefix: classpath:/processes/
+  async-executor-activate: false
+  # 集成测试允许 Flowable 自动创建/更新 ACT_* 表（每次运行前测试库都会重建）
+  database-schema-update: true
+  history-level: full
+
+# JWT 配置 — 仅测试用固定密钥（32 字节 Base64），非生产凭证
+jwt:
+  secret: "aXQtand0LXNlY3JldC10ZXN0LW9ubHktMzJieXRlcyEhISE="
+  expiration: 3600000 # 1 小时
+  header: Authorization
+  prefix: Bearer
+
+# CORS — 测试请求不跨域，保持精确白名单即可
+cors:
+  allowed-origins: "http://localhost:5173,http://localhost:3000"
+
+server:
+  servlet:
+    context-path: /api/v1
+
+work-order-system:
+  db:
+    auto-create: false
+  rate-limit:
+    # 测试放开限流阈值，避免用例间互相触发 429 造成不稳定
+    login-per-minute: 100000
+    approve-per-minute: 100000
+    default-per-minute: 100000
+  security:
+    dek-migration:
+      # 关闭启动期 DEK 迁移扫描（新库无存量数据；用户创建由服务层按需生成 DEK）
+      enabled: false
+    # 仅测试用 AES 旧密钥（32 字节 Base64；与 dev 一致的固定值，仅限测试库）
+    aes-encryption-key: "ZGV2LWFlcy1rZXktMzJieXRlcy1maXhlZC0yMDI2ISE="
+    # 仅测试用 KEK（32 字节 Base64；仅限测试库，生产强制 KMS/环境变量）
+    kek-base64: "ZGV2LWtlay0zMmJ5dGVzLWZpeGVkLTIwMjYhIWEjJSQ="
+    kek-source: env
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    root: INFO
+    com.workorder: INFO
+    org.springframework.security: WARN
+    org.flowable: WARN

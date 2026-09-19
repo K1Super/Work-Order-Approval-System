@@ -1,5 +1,6 @@
 package com.workorder.dao;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -27,7 +28,7 @@ public interface SecurityAuditLogMapper {
    *     pageNum: Page number (1-based) - pageSize: Page size
    * @return Paginated result with total count and data list
    */
-  Map<String, Object> queryWithPagination(Map<String, Object> params);
+  List<SecurityAuditLog> queryWithPagination(@Param("params") Map<String, Object> params);
 
   /** Count total records matching filters 统计符合条件的记录总数 */
   int countByFilters(@Param("params") Map<String, Object> params);

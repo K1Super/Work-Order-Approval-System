@@ -4,7 +4,10 @@ package com.workorder.controller;
 import java.util.Map;
 import java.util.Properties;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.PropertiesLoaderUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,26 +23,33 @@ import com.workorder.common.result.Result;
  * 系统维护控制器
  *
  * <p>将 Debug/修复/数据初始化端点从 EmployeeController 中分离， 避免生产代码与维护工具代码混合。
+ *
+ * <p>W-11：维护接口仅开发环境加载（@Profile("dev")，生产不加载此 Bean、端点完全不存在）， 且仅超级管理员可调用
+ * （@PreAuthorize("hasRole('SUPER_ADMIN')")）； 内部破坏性重建已改为逻辑删除 + UPSERT 恢复，避免物理删除。
  */
+@Profile("dev")
 @RestController
 @RequestMapping("/maintenance")
 public class MaintenanceController {
+
+  private static final Logger logger = LoggerFactory.getLogger(MaintenanceController.class);
 
   /** 字节掩码（用于 byte→int 无符号转换） */
   private static final int BYTE_MASK = 0xFF;
 
   @Autowired private JdbcTemplate jdbcTemplate;
 
-  /** 修复部门/职位中文乱码数据 */
+  /** 修复部门/职位中文乱码数据（W-11：仅超管 + dev 环境；破坏性删除改为逻辑删除+UPSERT 重建） */
   @PostMapping("/fix-encoding")
-  @PreAuthorize("hasAuthority('system:user')")
+  @PreAuthorize("hasRole('SUPER_ADMIN')")
   public Result<String> fixEncoding() {
     try {
       Properties props =
           PropertiesLoaderUtils.loadProperties(new ClassPathResource("chinese-data.properties"));
 
-      jdbcTemplate.update("DELETE FROM sys_department");
-      jdbcTemplate.update("DELETE FROM sys_position");
+      // W-11：破坏性物理 DELETE 改为逻辑删除（sys_department/sys_position 均含 is_deleted 列）
+      jdbcTemplate.update("UPDATE sys_department SET is_deleted = 1 WHERE is_deleted = 0");
+      jdbcTemplate.update("UPDATE sys_position SET is_deleted = 1 WHERE is_deleted = 0");
 
       String[][] deptData = {
           {"1", "总经办", "GENERAL_OFFICE", "1", "1"},
@@ -53,7 +63,11 @@ public class MaintenanceController {
       };
       for (String[] d : deptData) {
         jdbcTemplate.update(
-            "INSERT INTO sys_department (id, dept_name, dept_code, org_level, sort_order) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO sys_department (id, dept_name, dept_code, org_level, sort_order, is_deleted) "
+                + "VALUES (?, ?, ?, ?, ?, 0) "
+                + "ON CONFLICT (id) DO UPDATE SET dept_name = EXCLUDED.dept_name, "
+                + "dept_code = EXCLUDED.dept_code, org_level = EXCLUDED.org_level, "
+                + "sort_order = EXCLUDED.sort_order, is_deleted = 0",
             Integer.parseInt(d[0]),
             d[1],
             d[2],
@@ -84,7 +98,11 @@ public class MaintenanceController {
       };
       for (String[] p : posData) {
         jdbcTemplate.update(
-            "INSERT INTO sys_position (id, position_name, position_code, dept_id, org_level) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO sys_position (id, position_name, position_code, dept_id, org_level, is_deleted) "
+                + "VALUES (?, ?, ?, ?, ?, 0) "
+                + "ON CONFLICT (id) DO UPDATE SET position_name = EXCLUDED.position_name, "
+                + "position_code = EXCLUDED.position_code, dept_id = EXCLUDED.dept_id, "
+                + "org_level = EXCLUDED.org_level, is_deleted = 0",
             Integer.parseInt(p[0]),
             p[1],
             p[2],
@@ -94,13 +112,14 @@ public class MaintenanceController {
 
       return Result.success("OK");
     } catch (Exception e) {
-      return Result.error("ERR: " + e.getMessage());
+      logger.error("[Maintenance] 修复部门/职位中文乱码数据失败", e);
+      return Result.error("数据修复失败，请稍后重试");
     }
   }
 
   /** 修复角色名称为中文（5级权限架构） */
   @PostMapping("/fix-roles")
-  @PreAuthorize("hasAuthority('system:user')")
+  @PreAuthorize("hasRole('SUPER_ADMIN')")
   public Result<String> fixRoles() {
     try {
       String[][] roleUpdates = {
@@ -133,13 +152,14 @@ public class MaintenanceController {
       }
       return Result.success("角色名称已更新为中文（共19个角色，5级权限架构）");
     } catch (Exception e) {
-      return Result.error("角色修复失败: " + e.getMessage());
+      logger.error("[Maintenance] 修复角色名称失败", e);
+      return Result.error("角色修复失败，请稍后重试");
     }
   }
 
   /** 调试编码问题 */
   @GetMapping("/debug-encoding")
-  @PreAuthorize("hasAuthority('system:user')")
+  @PreAuthorize("hasRole('SUPER_ADMIN')")
   public Result<Map<String, Object>> debugEncoding() {
     Map<String, Object> result = new java.util.HashMap<>();
     try {
@@ -152,7 +172,8 @@ public class MaintenanceController {
       result.put("jvm_encoding", System.getProperty("file.encoding"));
       return Result.success(result);
     } catch (Exception e) {
-      return Result.error(e.getMessage());
+      logger.error("[Maintenance] 调试编码信息失败", e);
+      return Result.error("调试信息获取失败，请稍后重试");
     }
   }
 

@@ -7,8 +7,7 @@
   <meta name="format-detection" content="telephone=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://localhost:8080 https:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+  <!-- CSP 由后端 HTTP 响应头统一收敛；meta 中 frame-ancestors 无效，故前端不实现 CSP -->
   <title>工单审批流转系统</title>
   <!-- 防止iOS点击闪烁 -->
   <style>

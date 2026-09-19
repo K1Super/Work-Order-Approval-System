@@ -32,8 +32,9 @@ spring:
       enabled: true
 
 # JWT配置 - 开发环境（Token有效期更长）
+# W-07 轮换：2026-09-16 替换泄露的旧默认密钥（随机 32 字节 Base64），生产必须用环境变量 JWT_SECRET
 jwt:
-  secret: ${JWT_SECRET:WOS_Dev_K2026_HmacSha512_256bit_RndSalt!@#SecKey}
+  secret: ${JWT_SECRET:bNqr/7JEn/x7Ffqdu9aIH5znT4axAFpOugbhexYeJf8=}
   expiration: ${JWT_EXPIRATION:86400000}  # 24小时
   header: Authorization
   prefix: Bearer
@@ -43,14 +44,13 @@ cors:
   allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
 
 # 日志配置 - 开发环境（DEBUG级别）
+# W-18 修复：移除 logging.pattern.*，pattern/rolling 统一由 logback-spring.xml 管理，避免配置打架
 logging:
   level:
     root: INFO
     com.workorder: DEBUG
     org.springframework.security: DEBUG
     org.flowable: WARN
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
   file:
     name: logs/dev.log
 
@@ -83,7 +83,6 @@ springdoc:
 # - KEK：环境变量 KEK_BASE64（32 字节 Base64），未配置时使用固定默认值便于本地启动
 # - AES legacy 密钥：用于解密历史数据（迁移期兼容），数据迁移完成后可移除
 # - CSRF：由 Spring Security CookieCsrfTokenRepository 接管，前端 Axios 自动注入
-# - 已废弃：work-order-system.security.message-signing-key（HMAC 签名机制已废弃）
 # ============================================================
 work-order-system:
   security:
@@ -101,5 +100,5 @@ work-order-system:
     dek-migration:
       enabled: ${DEK_MIGRATION_ENABLED:true}
   db:
-    auto-create: ${APP_DB_AUTO_CREATE:true}
+    auto-create: true
 

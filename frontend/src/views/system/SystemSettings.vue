@@ -385,7 +385,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { Setting, Document, Bell, Lock } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { RESULT_CODE } from '@/constants'
@@ -735,7 +735,7 @@ onMounted(() => {
   }
 
   // 监听系统名称变化事件
-  window.addEventListener('systemNameChanged', (event) => {
+  window.addEventListener('systemNameChanged', () => {
     // 系统名称已更新
   })
 })

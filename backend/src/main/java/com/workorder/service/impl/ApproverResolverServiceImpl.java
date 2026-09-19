@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.workorder.common.enums.OrderTypeEnum;
 import com.workorder.dao.UserMapper;
 import com.workorder.dto.RoleInfoDTO;
 import com.workorder.entity.User;
@@ -30,6 +31,9 @@ import com.workorder.service.IApproverResolverService;
 public class ApproverResolverServiceImpl implements IApproverResolverService {
 
   private static final Logger logger = LoggerFactory.getLogger(ApproverResolverServiceImpl.class);
+
+  /** W-27：独立工作流告警 logger，用于审批人解析失败等关键告警。 */
+  private static final Logger ALERT = LoggerFactory.getLogger("WORKFLOW_ALERT_LOGGER");
 
   // ========== 组织层级常量 ==========
 
@@ -114,11 +118,11 @@ public class ApproverResolverServiceImpl implements IApproverResolverService {
           taskName, orderType, amount, leaveDays, applicant, priority, applicantOrgLevel);
 
     } catch (Exception e) {
-
-      logger.error("[ApproverResolver] 解析失败 - 任务: {}, 错误: {}", taskName, e.getMessage(), e);
-
-      return null;
-
+      // W-27：禁止吞异常后返回 null（上层会落空 assignee 导致工序静默卡死），告警并上抛。
+      ALERT.error(
+          "[WORKFLOW_ALERT] 审批人解析异常 - 任务: {}, 申请人ID: {}, 原因: {}",
+          taskName, applicantId, e.getMessage(), e);
+      throw new RuntimeException("审批人解析异常: " + taskName, e);
     }
 
   }
@@ -164,9 +168,8 @@ public class ApproverResolverServiceImpl implements IApproverResolverService {
       }
 
     } catch (Exception e) {
-
+      // 可降级：角色查询失败时回退按组织层级判断，不阻断审批人筛选。
       logger.warn("查询用户角色失败，按组织层级判断: userId={}, error={}", user.getId(), e.getMessage());
-
     }
 
     return false;
@@ -227,7 +230,9 @@ public class ApproverResolverServiceImpl implements IApproverResolverService {
 
       case "专项审核":
 
-        return findHRStaff(applicant);
+        // W-12：职能节点按工单类型选择对应职能角色（全局按角色查询，不限定申请人同部门），
+        // 支持跨部门职能审批流转；部门审批节点（部门经理等）行为保持不变。
+        return findSpecialist(applicant, orderType);
 
       case "CHRO Approval":
 
@@ -614,6 +619,35 @@ public class ApproverResolverServiceImpl implements IApproverResolverService {
   }
 
   // ==================== 专项职能岗查找 ====================
+
+  /**
+   * W-12：专项审核职能节点 — 按工单类型选择对应职能角色。
+   *
+   * <p>报销→财务会计、采购→采购专员、维修→IT工程师、补货→行政专员； 其余/未知类型回退 HR 专员。
+   * 所有职能岗均通过角色码全局查询（selectFirstActiveUserIdByRoleCode），不限定申请人所在部门，
+   * 实现「数据权限与审批权限分离」，保证跨部门职能审批可正常流转。
+   */
+  private String findSpecialist(User applicant, String orderType) {
+    logger.info(
+        "查找专项审核人 - 申请人: {}, 工单类型: {}", applicant.getRealName(), orderType);
+
+    OrderTypeEnum type = OrderTypeEnum.fromCode(orderType);
+    if (type == null) {
+      return findHRStaff(applicant);
+    }
+    switch (type) {
+      case REIMBURSEMENT:
+        return findByRoleCode("ACCOUNTANT_SPEC", 13L, applicant, "财务会计");
+      case PURCHASE:
+        return findByRoleCode("PROCUREMENT_SPEC", null, applicant, "采购专员");
+      case REPAIR:
+        return findByRoleCode("RD_ENGINEER_SPEC", 15L, applicant, "IT工程师");
+      case SUPPLY:
+        return findByRoleCode("ADMIN_SPEC", 16L, applicant, "行政专员");
+      default:
+        return findHRStaff(applicant);
+    }
+  }
 
   private String findByRoleCode(String roleCode, Long fallbackId, User applicant, String roleName) {
 

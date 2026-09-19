@@ -234,6 +234,19 @@ export function addDynamicRoutes(userStore) {
   })
 }
 
+/**
+ * 回收动态权限路由（W-45：登出/换账号时调用，防止残留越权路由）
+ *
+ * 逐个移除已注册的动态路由；下次登录成功后由 addDynamicRoutes 重新 addRoute。
+ */
+export function resetRouter() {
+  dynamicRoutes.forEach(route => {
+    if (route.name && router.hasRoute(route.name)) {
+      router.removeRoute(route.name)
+    }
+  })
+}
+
 // ============================================================
 // 全局路由守卫
 // ============================================================

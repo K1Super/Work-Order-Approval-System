@@ -16,10 +16,8 @@ import request from '@/utils/request'
  * @param {string} [logData.action] 操作标识
  */
 export function reportError(logData) {
-  return request.post('/client-logs/report', logData, {
-    // 上报接口不需要 CSRF Token（已在 SecurityConfig 中豁免）
-    skipCsrf: true
-  }).catch(() => {
+  // W-48：删除 skipCsrf 死配置；统一由 request 实例自动注入 X-XSRF-TOKEN 与凭证
+  return request.post('/client-logs/report', logData).catch(() => {
     // 上报失败静默处理，不影响业务
   })
 }

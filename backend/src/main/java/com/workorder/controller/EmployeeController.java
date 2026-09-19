@@ -8,6 +8,7 @@ import java.util.Map;
 import javax.servlet.http.HttpServletResponse;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.workorder.annotation.RequireReAuth;
+import com.workorder.common.exception.BusinessException;
+import com.workorder.common.exception.ErrorCode;
 import com.workorder.common.result.Result;
 import com.workorder.dao.UserMapper;
 import com.workorder.entity.ResignedEmployee;
@@ -50,6 +53,8 @@ public class EmployeeController {
   @Autowired private IResignedEmployeeService resignedEmployeeService;
 
   @Autowired private IEmployeeExportService exportService;
+
+  @Autowired private Environment environment;
 
   // ==================== CRUD 接口 ====================
 
@@ -91,9 +96,10 @@ public class EmployeeController {
   }
 
   @DeleteMapping("/{id}")
-  @PreAuthorize("hasAuthority('system:user')")
+  @PreAuthorize("hasRole('SUPER_ADMIN')")
   @RequireReAuth(description = "删除员工")
   public Result<Void> deleteEmployee(@PathVariable Long id) {
+    assertMaintenanceAllowed();
     return employeeService.deleteEmployee(id);
   }
 
@@ -106,12 +112,13 @@ public class EmployeeController {
   }
 
   @PutMapping("/{id}/reset-password")
-  @PreAuthorize("hasAuthority('system:user')")
+  @PreAuthorize("hasRole('SUPER_ADMIN')")
   @RequireReAuth(description = "重置密码")
   public Result<Map<String, Object>> resetPassword(
       @PathVariable Long id,
       @RequestBody(required = false) Map<String, String> body,
       Authentication authentication) {
+    assertMaintenanceAllowed();
     User currentUser = getCurrentUser(authentication);
     // 超管重置自己密码时的二次验证密码（其他场景可空）
     String operatorPassword = body != null ? body.get("operatorPassword") : null;
@@ -125,8 +132,9 @@ public class EmployeeController {
   }
 
   @PostMapping("/batch-import")
-  @PreAuthorize("hasAuthority('system:user')")
+  @PreAuthorize("hasRole('SUPER_ADMIN')")
   public Result<Map<String, Object>> batchImport(@RequestBody List<User> employees) {
+    assertMaintenanceAllowed();
     return employeeService.batchImport(employees);
   }
 
@@ -218,6 +226,18 @@ public class EmployeeController {
   }
 
   // ==================== 工具方法 ====================
+
+  /**
+   * W-11：维护类接口生产禁用开关（等价 @Profile("dev") 的单端点守卫）
+   *
+   * <p>删除员工/重置密码/批量导入属维护类管理端点，仅超级管理员（@PreAuthorize 已限定）且仅在 dev
+   * 环境可用；非 dev（含 prod）环境直接拒绝，保证生产不可用。
+   */
+  private void assertMaintenanceAllowed() {
+    if (!environment.acceptsProfiles("dev")) {
+      throw new BusinessException(ErrorCode.ACCESS_DENIED, "维护接口仅开发环境可用");
+    }
+  }
 
   /** 从 Spring Security 认证信息获取当前用户实体 消除每个方法中重复的样板代码 */
   private User getCurrentUser(Authentication authentication) {

@@ -38,6 +38,7 @@ export function getToken() {
  */
 export function setToken(_token) {
   // no-op：Token 由后端 HttpOnly Cookie 设置
+  void _token
 }
 
 /**

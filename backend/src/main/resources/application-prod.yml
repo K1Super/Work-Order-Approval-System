@@ -1,0 +1,86 @@
+# ============================================================
+# 工单审批流转系统 - 生产环境配置
+# 激活方式: --spring.profiles.active=prod 或 SPRING_PROFILES_ACTIVE=prod
+#
+# W-17（fix-spec §4）：生产配置受控，键名可校验
+# - 所有敏感值（DB 密码、Redis 密码、JWT_SECRET、AES_ENCRYPTION_KEY、KEK_BASE64 等）
+#   一律使用 ${ENV_VAR} 且【无默认值】——环境变量缺失时启动即失败（fail-fast），
+#   保证生产环境不落盘任何明文密钥。
+# - 键名与 application-dev.yml 完全对齐（datasource/redis/jwt/cors/logging/server/
+#   mybatis/springdoc/work-order-system.security.*），便于统一校验。
+# ============================================================
+
+spring:
+  # 数据源配置 - 生产环境（全部强制环境变量，无默认值）
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?stringtype=unspecified
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  # Redis配置 - 生产环境（host/port/password 强制环境变量）
+  redis:
+    host: ${REDIS_HOST}
+    port: ${REDIS_PORT}
+    password: ${REDIS_PASSWORD}
+    database: 0
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+
+# JWT配置 - 生产环境（密钥强制环境变量，无默认值）
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}  # 24小时（非敏感项，可带默认值）
+  header: Authorization
+  prefix: Bearer
+
+# CORS配置 - 生产环境（精确白名单，禁止通配 *；来源列表强制环境变量）
+cors:
+  allowed-origins: ${CORS_ORIGINS}
+
+# 日志配置 - 生产环境（W-18：只留 file.name，pattern/rolling 统一由 logback-spring.xml 管理）
+logging:
+  file:
+    name: ${LOG_FILE:logs/application.log}
+
+# 服务器配置
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /api/v1
+
+# MyBatis配置 - 生产环境（不输出 SQL）
+mybatis:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+# SpringDoc OpenAPI 配置（规范 §1 — API 文档自动生成；生产默认关闭，仅超管可临时按需开启）
+springdoc:
+  api-docs:
+    enabled: false
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: false
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+  packages-to-scan: com.workorder.controller
+  default-produces-media-type: application/json
+
+# ============================================================
+# 应用层安全配置（生产环境）
+# - aes-encryption-key / kek-base64 强制环境变量，无默认值
+# - kek-source：生产默认 vault（密钥来源标记，由 KekService 读取）
+# - dek-migration：存量数据迁移完成后应置 false
+# ============================================================
+work-order-system:
+  security:
+    aes-encryption-key: ${AES_ENCRYPTION_KEY}
+    kek-base64: ${KEK_BASE64}
+    kek-source: ${KEK_SOURCE:vault}
+    dek-migration:
+      enabled: ${DEK_MIGRATION_ENABLED:true}
+  db:
+    auto-create: ${APP_DB_AUTO_CREATE:false}

@@ -36,6 +36,9 @@ public class DataIntegrityReconciliationTask {
 
   @Autowired private ApprovalLogMapper approvalLogMapper;
 
+  /** W-36：对账任务全局分布式锁 key（多实例互斥，避免并发重复标记） */
+  private static final long RECONCILIATION_LOCK_KEY = 7000000001L;
+
   /**
    * 每 30 分钟执行一次数据完整性对账 fixedRate = 30 * 60 * 1000 = 1800000 ms initialDelay = 60000（启动后 1
    * 分钟首次执行，避免与启动冲突）
@@ -47,6 +50,9 @@ public class DataIntegrityReconciliationTask {
     reconciliationLogger.info("[对账任务] 开始执行 - 启动时间: {}", startTime);
 
     try {
+      // W-36 修复：多实例并发对账加分布式锁（复用 PG 事务级 advisory lock，事务提交后自动释放）
+      workOrderMapper.acquireAdvisoryLock(RECONCILIATION_LOCK_KEY);
+
       // 1. 扫描 work_order.applicant_id 悬空引用
       int workOrderFixed = scanOrphanWorkOrderApplicants();
 
@@ -95,7 +101,9 @@ public class DataIntegrityReconciliationTask {
                   "\n[系统提示：申请人已离职（用户ID=%d, 申请时姓名=%s），请重新指派或终止流程]",
                   wo.getApplicantId(), wo.getApplicantName());
 
-          int rows = workOrderMapper.appendRemarkForOrphanWorkOrder(wo.getId(), remarkAppend);
+          int rows =
+              workOrderMapper.appendRemarkForOrphanWorkOrder(
+                  wo.getId(), wo.getVersion(), remarkAppend);
           if (rows > 0) {
             fixed++;
             reconciliationLogger.warn(
@@ -103,6 +111,10 @@ public class DataIntegrityReconciliationTask {
                 wo.getOrderNo(),
                 wo.getTitle(),
                 wo.getApplicantName());
+          } else {
+            // W-36 修复：乐观锁冲突（version 不匹配），视为并发修改，跳过本次标记并告警
+            reconciliationLogger.warn(
+                "[对账任务] 工单 {} 乐观锁冲突（并发修改），跳过本次标记", wo.getOrderNo());
           }
         } catch (Exception e) {
           reconciliationLogger.error(

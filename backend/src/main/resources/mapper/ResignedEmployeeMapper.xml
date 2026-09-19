@@ -8,8 +8,8 @@
         <result column="user_id" property="userId"/>
         <result column="username" property="username"/>
         <result column="real_name" property="realName"/>
-        <result column="email" property="email"/>
-        <result column="phone" property="phone"/>
+        <result column="email" property="email" typeHandler="com.workorder.config.AesEncryptedStringTypeHandler"/>
+        <result column="phone" property="phone" typeHandler="com.workorder.config.AesEncryptedStringTypeHandler"/>
         <result column="department" property="department"/>
         <result column="department_id" property="departmentId"/>
         <result column="position_id" property="positionId"/>
@@ -36,7 +36,7 @@
             org_level, hire_date, resign_date, resign_type,
             resign_reason, remark, operator_id, operator_name, is_deleted, create_by
         ) VALUES (
-            #{userId}, #{username}, #{realName}, #{email}, #{phone},
+            #{userId}, #{username}, #{realName}, #{email, typeHandler=com.workorder.config.AesEncryptedStringTypeHandler}, #{phone, typeHandler=com.workorder.config.AesEncryptedStringTypeHandler},
             #{department}, #{departmentId}, #{positionId}, #{positionName},
             #{orgLevel}, #{hireDate}, #{resignDate}, #{resignType},
             #{resignReason}, #{remark}, #{operatorId}, #{operatorName}, 0, #{createBy}
@@ -54,7 +54,7 @@
         <where>
             AND is_deleted = 0
             <if test="keyword != null and keyword != ''">
-                AND (real_name LIKE #{keyword} OR username LIKE #{keyword} OR phone LIKE #{keyword})
+                AND (real_name LIKE #{keyword} OR username LIKE #{keyword})
             </if>
             <if test="departmentId != null">
                 AND department_id = #{departmentId}
@@ -71,8 +71,9 @@
     <select id="countTotal" resultType="int">
         SELECT COUNT(*) FROM sys_resigned_employee
         <where>
+            AND is_deleted = 0
             <if test="keyword != null and keyword != ''">
-                AND (real_name LIKE #{keyword} OR username LIKE #{keyword} OR phone LIKE #{keyword})
+                AND (real_name LIKE #{keyword} OR username LIKE #{keyword})
             </if>
             <if test="departmentId != null">
                 AND department_id = #{departmentId}

@@ -10,6 +10,7 @@ import com.workorder.common.result.Result;
 import com.workorder.dto.ApprovalDTO;
 import com.workorder.dto.TaskInfoDTO;
 import com.workorder.dto.WorkOrderDTO;
+import com.workorder.dto.WorkOrderUpdateDTO;
 import com.workorder.entity.WorkOrder;
 
 /**
@@ -73,16 +74,14 @@ public interface IWorkOrderService {
    */
   Result<WorkOrder> archiveWorkOrder(Long workOrderId, Long userId);
 
-  /** 更新工单信息 */
-  Result<WorkOrder> updateWorkOrder(WorkOrder workOrder);
-
   /**
-   * 更新工单信息（带操作人 ID，用于所有权校验） 阶段 2 修复 A-11/H-07：仅发起人可修改草稿状态工单，防 IDOR 越权
+   * 更新工单信息（W-04 修复：白名单 DTO，防 Mass Assignment）
    *
-   * @param workOrder 工单数据
-   * @param userId 当前操作用户 ID
+   * @param workOrderId 工单ID
+   * @param dto 白名单可编辑字段（不含 status/completeTime/departmentId/priority）
+   * @param userId 当前操作用户 ID（仅发起人可改草稿状态工单）
    */
-  Result<WorkOrder> updateWorkOrder(WorkOrder workOrder, Long userId);
+  Result<WorkOrder> updateWorkOrder(Long workOrderId, WorkOrderUpdateDTO dto, Long userId);
 
   /** 删除工单（仅草稿状态可删除） */
   Result<?> deleteWorkOrder(Long workOrderId, Long userId);

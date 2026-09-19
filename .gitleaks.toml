@@ -1,0 +1,28 @@
+# ============================================================
+# gitleaks 配置 — 工单审批流转系统
+# W-07 修复：CI 密钥扫描闸真实生效（security-scan.yml 引用本文件）
+# 用法：gitleaks detect --source . --config .gitleaks.toml
+# 规则策略：默认规则 + 仅豁免无凭证价值的构建产物/依赖锁文件
+# ============================================================
+
+title = "work-order-approval-system gitleaks config"
+
+[extend]
+useDefault = true
+
+# 全局豁免：仅豁免无凭证价值的构建产物与依赖锁文件
+# 注意：不得豁免源码、配置文件、文档——明文凭证必须真实阻断
+[allowlist]
+description = "全局豁免规则（构建产物 / 依赖锁文件 / 压缩资源）"
+paths = [
+  '''\.min\.js$''',
+  '''\.min\.css$''',
+  '''package-lock\.json$''',
+  '''yarn\.lock$''',
+  '''pnpm-lock\.yaml$''',
+  '''node_modules/''',
+  '''backend/target/''',
+  '''\.class$''',
+  '''\.log$''',
+  '''\.map$''',
+]

@@ -11,7 +11,7 @@
       <!-- 时间线展示 -->
       <el-timeline v-if="logList.length > 0">
         <el-timeline-item
-          v-for="(log, index) in logList"
+          v-for="log in logList"
           :key="log.id"
           :timestamp="formatDateTime(log.createTime)"
           placement="top"

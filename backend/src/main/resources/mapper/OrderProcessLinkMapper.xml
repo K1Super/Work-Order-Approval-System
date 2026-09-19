@@ -27,6 +27,15 @@
         WHERE work_order_id = #{workOrderId} AND is_deleted = 0
     </select>
 
+    <!-- 根据工单ID查询（含逻辑删除行，W-03：重提交恢复场景） -->
+    <select id="selectAnyByWorkOrderId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM order_process_link
+        WHERE work_order_id = #{workOrderId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
     <!-- 根据流程实例ID查询 -->
     <select id="selectByProcessInstanceId" resultMap="BaseResultMap">
         SELECT <include refid="Base_Column_List"/>
@@ -55,6 +64,16 @@
             process_definition_id = #{processDefinitionId},
             update_time = CURRENT_TIMESTAMP
         WHERE work_order_id = #{workOrderId} AND is_deleted = 0
+    </update>
+
+    <!-- 恢复逻辑删除行并更新流程实例（W-03：重提交复用旧行） -->
+    <update id="restoreAndUpdate">
+        UPDATE order_process_link
+        SET process_instance_id = #{processInstanceId},
+            process_definition_id = #{processDefinitionId},
+            is_deleted = 0,
+            update_time = CURRENT_TIMESTAMP
+        WHERE work_order_id = #{workOrderId}
     </update>
 
     <!-- 逻辑删除关联记录 -->

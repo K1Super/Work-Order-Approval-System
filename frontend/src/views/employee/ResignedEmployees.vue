@@ -305,18 +305,6 @@ const getResignTypeText = (type) => {
   return typeMap[type] || '-'
 }
 
-// 获取离职类型标签样式
-const getResignTypeTag = (type) => {
-  const tagMap = {
-    1: '',
-    2: 'danger',
-    3: 'warning',
-    4: 'info',
-    5: ''
-  }
-  return tagMap[type] || ''
-}
-
 // 初始化
 onMounted(() => {
   loadDepartments()

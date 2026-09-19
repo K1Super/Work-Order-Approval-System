@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  W-19（fix-spec §4）：OWASP Dependency-Check 抑制文件（标准空抑制清单骨架）。
+  用于管理误报/已评估风险，规则需精确匹配（优先 packageUrl / cve），
+  并写明 <notes> 抑制原因与有效期。被 CI 通过 -DsuppressionFiles 引用。
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>

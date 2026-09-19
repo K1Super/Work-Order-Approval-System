@@ -17,23 +17,37 @@ public class HrTaskListener implements TaskListener {
 
   private static final Logger logger = LoggerFactory.getLogger(HrTaskListener.class);
 
+  /** W-27：独立工作流告警 logger，用于分配失败等关键告警。 */
+  private static final Logger ALERT = LoggerFactory.getLogger("WORKFLOW_ALERT_LOGGER");
+
   @Autowired private IApproverResolverService approverResolverService;
 
   @Override
   public void notify(DelegateTask delegateTask) {
-    try {
-      String applicantId = (String) delegateTask.getVariable("applicantId");
-      String assigneeId =
-          approverResolverService.resolveAssignee("HR Review", applicantId, null, null, null, null);
+    String applicantId = (String) delegateTask.getVariable("applicantId");
 
-      if (assigneeId != null && !IApproverResolverService.SIGNAL_SKIP_NODE.equals(assigneeId)) {
-        delegateTask.setAssignee(assigneeId);
-        logger.info("[HR] 任务分配完成 - Task ID: {}, 审批人: {}", delegateTask.getId(), assigneeId);
-      } else {
-        logger.warn("[HR] 未找到HR审批人 - Task ID: {}", delegateTask.getId());
-      }
+    String assigneeId;
+    try {
+      assigneeId =
+          approverResolverService.resolveAssignee("HR Review", applicantId, null, null, null, null);
     } catch (Exception e) {
-      logger.error("[HR] 分配异常 - 错误: {}", e.getMessage(), e);
+      ALERT.error(
+          "[WORKFLOW_ALERT] HR审批人解析异常 - 任务ID: {}, 流程实例: {}, 原因: {}",
+          delegateTask.getId(), delegateTask.getProcessInstanceId(), e.getMessage(), e);
+      throw new RuntimeException("HR审批人解析异常", e);
+    }
+
+    // HR 节点无“跳过”语义：跳过信号或 assignee 为空均视为分配失败，禁止静默落空 assignee 卡死
+    if (assigneeId != null
+        && !assigneeId.isEmpty()
+        && !IApproverResolverService.SIGNAL_SKIP_NODE.equals(assigneeId)) {
+      delegateTask.setAssignee(assigneeId);
+      logger.info("[HR] 任务分配完成 - Task ID: {}, 审批人: {}", delegateTask.getId(), assigneeId);
+    } else {
+      ALERT.error(
+          "[WORKFLOW_ALERT] HR审批人分配失败（候选人为空） - 任务ID: {}, 流程实例: {}",
+          delegateTask.getId(), delegateTask.getProcessInstanceId());
+      throw new RuntimeException("HR审批人分配失败");
     }
   }
 }

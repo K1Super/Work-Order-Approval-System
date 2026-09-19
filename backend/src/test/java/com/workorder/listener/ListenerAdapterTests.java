@@ -1,5 +1,6 @@
 package com.workorder.listener;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -19,7 +20,7 @@ import org.mockito.quality.Strictness;
 /**
  * Listener 适配器完整测试套件
  *
- * <p>验证 Listener 作为轻量适配器的行为： - 正确提取流程变量并委托给 Service - 处理跳过信号（自动完成任务） - 设置审批人 - 异常不影响流程继续运行 -
+ * <p>验证 Listener 作为轻量适配器的行为： - 正确提取流程变量并委托给 Service - 处理跳过信号（自动完成任务） - 设置审批人 - 异常向上传播（fail-loud 告警） -
  * 类型转换和边界条件处理
  *
  * <p>覆盖范围： - DynamicTaskAssigner 正常流程（5种场景） - DynamicTaskAssigner 异常边界（8种场景） - DynamicTaskAssigner
@@ -91,31 +92,31 @@ class ListenerAdapterTests {
     }
 
     @Test
-    @DisplayName("Service 返回 null：仅记录日志，不崩溃")
-    void handles_null_assignee_gracefully() {
+    @DisplayName("Service 返回 null：告警并抛出审批人分配失败异常（fail-loud）")
+    void handles_null_assignee_by_throwing() {
       // Given: Service 返回 null（未找到审批人）
       setupDelegateTask("Unknown Task", "999", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenReturn(null);
 
-      // When / Then: 不抛异常
-      assigner.notify(delegateTask);
+      // When / Then: 抛出异常，不静默落空 assignee
+      assertThrows(RuntimeException.class, () -> assigner.notify(delegateTask));
       verify(delegateTask, never()).setAssignee(anyString());
       verify(taskService, never()).complete(anyString());
     }
 
     @Test
-    @DisplayName("Service 抛出异常：捕获并记录，不传播")
-    void catches_service_exception() {
+    @DisplayName("Service 抛出异常：告警并向上传播 RuntimeException")
+    void propagates_service_exception() {
       // Given: Service 抛出异常
       setupDelegateTask("HR Review", "100", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenThrow(new RuntimeException("DB connection failed"));
 
-      // When / Then: 不抛异常给 Flowable
-      assigner.notify(delegateTask);
+      // When / Then: 异常向上传播，不静默吞掉
+      assertThrows(RuntimeException.class, () -> assigner.notify(delegateTask));
       verify(delegateTask, never()).setAssignee(anyString());
     }
 
@@ -165,8 +166,8 @@ class ListenerAdapterTests {
     }
 
     @Test
-    @DisplayName("taskService.complete() 抛出异常时仅记录警告，不传播")
-    void task_complete_exception_caught_and_logged() {
+    @DisplayName("taskService.complete() 抛出异常时告警并向上传播")
+    void task_complete_exception_propagates() {
       // Given: 返回跳过信号，但 complete 操作失败
       setupDelegateTask("HR Review", "100", null, null, null, null);
       when(approverResolverService.resolveAssignee(
@@ -177,16 +178,16 @@ class ListenerAdapterTests {
           .when(taskService)
           .complete("task-err-001");
 
-      // When / Then: 不抛异常
-      assigner.notify(delegateTask);
+      // When / Then: 异常向上传播，避免任务无 assignee 静默卡死
+      assertThrows(RuntimeException.class, () -> assigner.notify(delegateTask));
 
-      // Then: 仍然尝试完成任务（异常被内部捕获）
+      // Then: 仍然尝试完成任务（失败后上抛）
       verify(taskService).complete("task-err-001");
       verify(delegateTask, never()).setAssignee(anyString());
     }
 
     @Test
-    @DisplayName("delegateTask.getName() 返回 null 时使用 null 任务名调用 Service")
+    @DisplayName("delegateTask.getName() 返回 null 时使用 null 任务名调用 Service（解析为空则抛异常）")
     void handles_null_task_name() {
       // Given: 任务名为 null
       when(delegateTask.getName()).thenReturn(null);
@@ -201,8 +202,8 @@ class ListenerAdapterTests {
               isNull(), eq("100"), isNull(), isNull(), isNull(), eq(2)))
           .thenReturn(null);
 
-      // When / Then: 不崩溃
-      assigner.notify(delegateTask);
+      // When / Then: 解析返回 null，fail-loud 抛出
+      assertThrows(RuntimeException.class, () -> assigner.notify(delegateTask));
     }
 
     @Test
@@ -269,7 +270,7 @@ class ListenerAdapterTests {
     }
 
     @Test
-    @DisplayName("所有变量都为 null 时仍能正常调用 Service")
+    @DisplayName("所有变量都为 null 时解析结果为空并抛异常")
     void all_null_variables_still_calls_service() {
       setupDelegateTask(null, null, null, null, null, null);
 
@@ -277,8 +278,8 @@ class ListenerAdapterTests {
               isNull(), isNull(), isNull(), isNull(), isNull(), eq(2)))
           .thenReturn(null);
 
-      // When / Then: 不崩溃
-      assigner.notify(delegateTask);
+      // When / Then: 解析为空，fail-loud 抛出
+      assertThrows(RuntimeException.class, () -> assigner.notify(delegateTask));
     }
   }
 
@@ -397,40 +398,40 @@ class ListenerAdapterTests {
     }
 
     @Test
-    @DisplayName("HR 返回跳过信号时不设置审批人")
-    void skip_signal_does_not_set_assignee() {
+    @DisplayName("HR 返回跳过信号时抛异常（HR 节点无跳过语义）")
+    void skip_signal_throws() {
       setupDelegateTask(null, "200", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenReturn(IApproverResolverService.SIGNAL_SKIP_NODE);
 
-      listener.notify(delegateTask);
+      assertThrows(RuntimeException.class, () -> listener.notify(delegateTask));
 
       verify(delegateTask, never()).setAssignee(anyString());
     }
 
     @Test
-    @DisplayName("HR Listener 的 Service 抛出异常时捕获不传播")
-    void catches_service_exception_gracefully() {
+    @DisplayName("HR Listener 的 Service 抛出异常时向上传播")
+    void propagates_service_exception() {
       setupDelegateTask(null, "200", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenThrow(new RuntimeException("DB error"));
 
-      // When / Then: 不抛异常
-      listener.notify(delegateTask);
+      // When / Then: 异常向上传播
+      assertThrows(RuntimeException.class, () -> listener.notify(delegateTask));
       verify(delegateTask, never()).setAssignee(anyString());
     }
 
     @Test
-    @DisplayName("HR 返回 null 时不设置审批人，不崩溃")
-    void handles_null_return_from_service() {
+    @DisplayName("HR 返回 null 时抛出分配失败异常")
+    void null_return_throws() {
       setupDelegateTask(null, "999", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenReturn(null);
 
-      listener.notify(delegateTask);
+      assertThrows(RuntimeException.class, () -> listener.notify(delegateTask));
 
       verify(delegateTask, never()).setAssignee(anyString());
     }
@@ -464,28 +465,28 @@ class ListenerAdapterTests {
     }
 
     @Test
-    @DisplayName("财务返回跳过信号时不设置审批人")
-    void skip_signal_no_assignee() {
+    @DisplayName("财务返回跳过信号时抛异常（财务节点无跳过语义）")
+    void skip_signal_throws() {
       setupDelegateTask(null, "300", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenReturn(IApproverResolverService.SIGNAL_SKIP_NODE);
 
-      listener.notify(delegateTask);
+      assertThrows(RuntimeException.class, () -> listener.notify(delegateTask));
 
       verify(delegateTask, never()).setAssignee(anyString());
     }
 
     @Test
-    @DisplayName("财务 Listener 的 Service 抛出异常时捕获")
-    void catches_service_exception() {
+    @DisplayName("财务 Listener 的 Service 抛出异常时向上传播")
+    void propagates_service_exception() {
       setupDelegateTask(null, "300", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenThrow(new IllegalStateException("System error"));
 
-      // When / Then: 不崩溃
-      listener.notify(delegateTask);
+      // When / Then: 异常向上传播
+      assertThrows(RuntimeException.class, () -> listener.notify(delegateTask));
     }
   }
 
@@ -530,26 +531,26 @@ class ListenerAdapterTests {
     }
 
     @Test
-    @DisplayName("Manager Listener 的 Service 抛出异常时捕获")
-    void catches_service_exception() {
+    @DisplayName("Manager Listener 的 Service 抛出异常时向上传播")
+    void propagates_service_exception() {
       setupDelegateTask(null, "400", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenThrow(new RuntimeException("Network timeout"));
 
-      // When / Then: 不崩溃
-      listener.notify(delegateTask);
+      // When / Then: 异常向上传播
+      assertThrows(RuntimeException.class, () -> listener.notify(delegateTask));
     }
 
     @Test
-    @DisplayName("返回 null 时不设置审批人")
-    void handles_null_return() {
+    @DisplayName("返回 null 时抛出分配失败异常")
+    void null_return_throws() {
       setupDelegateTask(null, "404", null, null, null, null);
       when(approverResolverService.resolveAssignee(
               anyString(), anyString(), any(), any(), any(), any()))
           .thenReturn(null);
 
-      listener.notify(delegateTask);
+      assertThrows(RuntimeException.class, () -> listener.notify(delegateTask));
 
       verify(delegateTask, never()).setAssignee(anyString());
     }
@@ -606,8 +607,8 @@ class ListenerAdapterTests {
     }
 
     @Test
-    @DisplayName("空字符串返回值会设置审批人（因为非 null）")
-    void empty_string_sets_assignee() {
+    @DisplayName("空字符串返回值视为分配失败并抛异常（fail-loud）")
+    void empty_string_throws() {
       DynamicTaskAssigner assigner = new DynamicTaskAssigner();
       injectFields(assigner);
 
@@ -616,10 +617,9 @@ class ListenerAdapterTests {
               anyString(), anyString(), any(), any(), any(), any()))
           .thenReturn(""); // 空字符串
 
-      assigner.notify(delegateTask);
-
-      // 空字符串不是 null，所以会设置 assignee（虽然值为空）
-      verify(delegateTask).setAssignee("");
+      // 空字符串不被视为有效 assignee，fail-loud 抛出
+      assertThrows(RuntimeException.class, () -> assigner.notify(delegateTask));
+      verify(delegateTask, never()).setAssignee(anyString());
       verify(taskService, never()).complete(anyString());
     }
   }

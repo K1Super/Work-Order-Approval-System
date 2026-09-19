@@ -2,12 +2,12 @@ package com.workorder.config;
 
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import javax.annotation.PreDestroy;
 
 import org.flowable.bpmn.model.ScriptTask;
-import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
 import org.flowable.engine.ProcessEngine;
 import org.flowable.engine.impl.bpmn.parser.BpmnParse;
 import org.flowable.engine.impl.bpmn.parser.handler.ScriptTaskParseHandler;
@@ -22,9 +22,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.DependsOn;
+
+import com.workorder.listener.ParallelApprovalEventListener;
 
 /**
  * Flowable 工作流引擎配置类 — 安全加固 + 生命周期治理
@@ -61,7 +61,17 @@ public class FlowableConfig
   @Autowired private ObjectProvider<ProcessEngine> processEngineProvider;
 
   /**
-   * 配置 Flowable 引擎：禁用脚本任务 实现 EngineConfigurationConfigurer，Flowable Spring Boot starter 在创建引擎时自动调用
+   * 全局事件监听器（W-14：显式注册，确保单例、仅一次生效）
+   *
+   * <p>ParallelApprovalEventListener 为 @Component 单例（其 TaskService 依赖已惰性化， 不依赖 ProcessEngine），
+   * 此处直接注入并在 configure() 中通过 setEventListeners 注册到 Flowable 引擎。 删除原先重复的 globalEventListener()
+   * @Bean，避免同类型双实例导致事件重复触发或注册失效。
+   */
+  @Autowired private ParallelApprovalEventListener parallelApprovalEventListener;
+
+  /**
+   * 配置 Flowable 引擎：禁用脚本任务 + 显式注册全局事件监听器（W-14） 实现 EngineConfigurationConfigurer，Flowable Spring Boot
+   * starter 在创建引擎时自动调用
    */
   @Override
   public void configure(SpringProcessEngineConfiguration config) {
@@ -95,17 +105,12 @@ public class FlowableConfig
     existingPreHandlers.addAll(customPreHandlers);
     config.setPreBpmnParseHandlers(existingPreHandlers);
 
+    // W-14：显式注册全局事件监听器（单例、仅一次），确保 TASK_CREATED 候选人缓存等事件生效
+    config.setEventListeners(Collections.singletonList(parallelApprovalEventListener));
     logger.info("✅ [Flowable 安全] 已注册 ScriptTask 解析拦截器，禁止部署含脚本任务的流程定义");
-  }
-
-  /**
-   * 注册全局事件监听器 用于解决并行审批的状态同步问题，并缓存任务候选人（防任务哄抢纵深防御） @DependsOn 确保监听器 Bean 在数据源与事务管理器就绪后初始化（规范 §1 第 4
-   * 条）
-   */
-  @Bean
-  @DependsOn({"dataSource", "transactionManager"})
-  public FlowableEventListener globalEventListener() {
-    return new com.workorder.listener.ParallelApprovalEventListener();
+    logger.info(
+        "✅ [Flowable 事件] 已显式注册全局事件监听器: {}（单例）",
+        parallelApprovalEventListener.getClass().getSimpleName());
   }
 
   /**

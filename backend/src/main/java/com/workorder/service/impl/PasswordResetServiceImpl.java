@@ -20,6 +20,7 @@ import com.workorder.dao.PasswordResetTokenMapper;
 import com.workorder.dao.UserMapper;
 import com.workorder.entity.PasswordResetToken;
 import com.workorder.entity.User;
+import com.workorder.security.TokenVersionCache;
 import com.workorder.service.IPasswordPolicyService;
 import com.workorder.service.IPasswordResetService;
 
@@ -52,6 +53,9 @@ public class PasswordResetServiceImpl implements IPasswordResetService {
   @Autowired private PasswordEncoder passwordEncoder;
 
   @Autowired private IPasswordPolicyService passwordPolicyService;
+
+  /** tokenVersion 二级缓存（密码重置后失效） */
+  @Autowired private TokenVersionCache tokenVersionCache;
 
   private final SecureRandom secureRandom = new SecureRandom();
 
@@ -106,7 +110,7 @@ public class PasswordResetServiceImpl implements IPasswordResetService {
 
     } catch (Exception e) {
       logger.error("❌ 生成密码重置令牌异常: userId={}, error={}", userId, e.getMessage(), e);
-      return Result.error("生成重置令牌失败: " + e.getMessage());
+      return Result.error("生成重置令牌失败，请稍后重试");
     }
   }
 
@@ -155,7 +159,7 @@ public class PasswordResetServiceImpl implements IPasswordResetService {
 
     } catch (Exception e) {
       logger.error("❌ 验证重置令牌异常: error={}", e.getMessage(), e);
-      return Result.error("验证重置令牌失败: " + e.getMessage());
+      return Result.error("验证重置令牌失败，请稍后重试");
     }
   }
 
@@ -233,6 +237,7 @@ public class PasswordResetServiceImpl implements IPasswordResetService {
         int bumped = userMapper.incrementTokenVersion(targetUser.getId());
         if (bumped > 0) {
           logger.info("用户 {} 密码重置后 token_version 已递增（旧 Token 立即失效）", targetUser.getId());
+          tokenVersionCache.evict(targetUser.getId());
         } else {
           logger.warn("用户 {} 密码重置后 token_version 递增返回 0 行（用户可能已被删除）", targetUser.getId());
         }
@@ -265,7 +270,7 @@ public class PasswordResetServiceImpl implements IPasswordResetService {
 
     } catch (Exception e) {
       logger.error("❌ 消费重置令牌异常: error={}", e.getMessage(), e);
-      return Result.error("密码重置失败: " + e.getMessage());
+      return Result.error("密码重置失败，请稍后重试");
     }
   }
 

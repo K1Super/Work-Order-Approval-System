@@ -1,6 +1,8 @@
 package com.workorder.controller;
 
 
+import javax.validation.Valid;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +24,7 @@ import com.workorder.common.result.PageResult;
 import com.workorder.common.result.Result;
 import com.workorder.dto.TaskInfoDTO;
 import com.workorder.dto.WorkOrderDTO;
+import com.workorder.dto.WorkOrderUpdateDTO;
 import com.workorder.entity.WorkOrder;
 import com.workorder.security.CustomUserDetails;
 import com.workorder.service.IWorkOrderService;
@@ -154,15 +157,17 @@ public class WorkOrderController {
     return workOrderService.archiveWorkOrder(id, userId);
   }
 
-  /** 更新工单信息（阶段 2 修复 A-11 / H-07：IDOR 越权防护） @DataPermission 校验当前用户对该工单的所有权（仅发起人可改草稿） */
+  /**
+   * 更新工单信息（W-04 修复：白名单 DTO，防 Mass Assignment）
+   * @DataPermission 校验当前用户对该工单的所有权（仅发起人可改草稿）
+   */
   @PutMapping("/{id}")
   @PreAuthorize("hasAuthority('workorder:submit')")
   @DataPermission(entityType = "WORK_ORDER", checkOwnership = true, resourceIdParam = "id")
   public Result<WorkOrder> updateWorkOrder(
-      @PathVariable Long id, @RequestBody WorkOrder workOrder) {
-    workOrder.setId(id);
+      @PathVariable Long id, @Valid @RequestBody WorkOrderUpdateDTO dto) {
     Long userId = getCurrentUserId();
-    return workOrderService.updateWorkOrder(workOrder, userId);
+    return workOrderService.updateWorkOrder(id, dto, userId);
   }
 
   /** 删除工单 */

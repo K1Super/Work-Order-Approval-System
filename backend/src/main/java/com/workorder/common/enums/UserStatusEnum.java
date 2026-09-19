@@ -12,7 +12,11 @@ public enum UserStatusEnum {
   /** 禁用 */
   DISABLED(0, "禁用"),
   /** 启用 */
-  ACTIVE(1, "启用");
+  ACTIVE(1, "启用"),
+  /** 已删除（逻辑删除，与 UserMapper.xml 过滤注释 status=-1 语义一致） */
+  DELETED(-1, "已删除"),
+  /** 已离职（离职处理流程终态，W-06 枚举化替代魔法数字 -2） */
+  RESIGNED(-2, "已离职");
 
   private final int code;
   private final String description;

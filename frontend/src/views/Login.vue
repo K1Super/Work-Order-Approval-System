@@ -129,8 +129,6 @@ const changingPassword = ref(false)
 
 // 强制改密相关状态
 const showChangePasswordDialog = ref(false)
-const tempToken = ref('') // 临时保存token，改密成功后使用
-const loginData = ref(null) // 临时保存登录返回的数据
 
 const loginForm = reactive({
   username: '',
@@ -189,17 +187,10 @@ async function handleLogin() {
   loading.value = true
   try {
     // OPTIMIZATION 三.3.1：登录请求由后端 AuthController 设置 HttpOnly Cookie (WOS_TOKEN)
-    // 同时响应体仍包含 token 字段（兼容强制改密流程作为 tempToken 使用）
+    // W-47：后端不再下发 tempToken，强制改密流程改凭 HttpOnly Cookie 完成
     const res = await request.post('/auth/sessions', loginForm, { skipAuthError: true })
 
     if (res.code === RESULT_CODE.SUCCESS) {
-      // 保存登录数据
-      loginData.value = res.data
-      // tempToken 仅用于强制改密流程的 Authorization Header
-      // （此时 HttpOnly Cookie 已设置但浏览器需在下次请求时才携带；
-      //  强制改密接口 /auth/change-password 需要立即用 tempToken 鉴权）
-      tempToken.value = res.data.token
-
       // 检查是否需要强制改密
       if (res.data.needChangePassword) {
         ElMessage.warning('首次登录，请修改初始密码')
@@ -249,17 +240,11 @@ async function handleChangePassword() {
 
   changingPassword.value = true
   try {
-    // OPTIMIZATION 三.3.1：强制改密流程仍需 Authorization Header
-    // 因为此时 HttpOnly Cookie 已设置但浏览器可能在下次请求才携带，
-    // 而 tempToken 是刚生成的 JWT，必须通过 Authorization Header 主动传递
-    // 后端 AuthCookieUtil.extractTokenFromRequest 优先读取 Authorization Header
+    // W-47：强制改密凭 HttpOnly Cookie 鉴权（request 实例已开启 withCredentials，
+    // 后端登录响应写入的 HttpOnly Cookie 会自动随请求携带），不再传递 tempToken
     const res = await request.put('/auth/password', {
       oldPassword: changePasswordForm.oldPassword,
       newPassword: changePasswordForm.newPassword
-    }, {
-      headers: {
-        'Authorization': `Bearer ${tempToken.value}`
-      }
     })
 
     if (res.code === RESULT_CODE.SUCCESS) {
@@ -267,9 +252,6 @@ async function handleChangePassword() {
 
       // 关闭弹窗
       showChangePasswordDialog.value = false
-
-      // 清除 tempToken（旧 Token 已因 token_version 递增失效）
-      tempToken.value = ''
 
       // 使用新密码重新登录
       loginForm.password = changePasswordForm.newPassword
@@ -303,10 +285,8 @@ function handleCancelChangePassword() {
       type: 'warning'
     }
   ).then(() => {
-    // 用户选择退出，关闭弹窗并清除临时数据
+    // 用户选择退出，关闭弹窗并清除表单数据
     showChangePasswordDialog.value = false
-    tempToken.value = ''
-    loginData.value = null
     changePasswordForm.oldPassword = ''
     changePasswordForm.newPassword = ''
     changePasswordForm.confirmPassword = ''

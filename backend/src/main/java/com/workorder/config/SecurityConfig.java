@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
@@ -20,7 +21,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 
 import com.workorder.filter.TraceIdFilter;
@@ -48,9 +48,11 @@ public class SecurityConfig {
 
   @Autowired private TraceIdFilter traceIdFilter;
 
+  @Autowired private Environment environment;
+
   /** Password Encoder with enterprise strength (BCrypt, 12 rounds) */
   @Bean
-  public PasswordEncoder passwordEncoder() {
+  public BCryptPasswordEncoder passwordEncoder() {
     return new BCryptPasswordEncoder(12);
   }
 
@@ -88,27 +90,25 @@ public class SecurityConfig {
   }
 
   /**
-   * CSRF Token Repository（OPTIMIZATION 三.3.2 Spring Security 内置 CSRF）
+   * CSRF Token Repository（W-24：会话无关双提交 Cookie 方案）
    *
-   * <p>使用 CookieCsrfTokenRepository 将 CSRF Token 写入 Cookie（XSRF-TOKEN）： - HttpOnly=false：允许前端 JS
-   * 读取，由 Axios 自动注入 X-XSRF-TOKEN 请求头 - Secure：根据 profile 决定（dev=false 兼容 HTTP localhost，prod=true 仅
-   * HTTPS） - SameSite=Lax：允许同站导航携带（登录跳转等）
+   * <p>系统使用 STATELESS 会话策略，无法像常规 CookieCsrfTokenRepository 那样依赖服务端会话绑定 Token， 故改为「双提交
+   * Cookie」：同一随机 Token 同时写入 XSRF-TOKEN Cookie 与 X-XSRF-TOKEN 请求头， 由 CsrfFilter 比较两者一致性，不绑定任何服务端会话。
    *
-   * <p>前端配合：Axios xsfCookieName + xsrHeaderName 自动读取并注入 X-XSRF-TOKEN 头。 废弃前端 HMAC
-   * 签名机制（密钥易通过开发工具泄露，形同虚设）。
+   * <p>STATELESS 下的 token 校验策略： CsrfFilter 从请求头（X-XSRF-TOKEN）或参数（_csrf）读取实际 Token， 与 Cookie 中保存的
+   * Token 做恒定时间比较（MessageDigest.isEqual）；两者一致才放行。 由于 Cookie 带 SameSite=Lax、无 HttpOnly（JS 可读），攻击者无法跨站读取或注入该头，仅同源可携带。
    *
-   * @return CookieCsrfTokenRepository 实例
+   * <p>SessionLessCookieCsrfTokenRepository 特点： - Cookie SameSite=Lax、Secure 按
+   * spring.profiles.active 是否含 prod 决定（prod 仅 HTTPS） - Token 由 SecureRandom 生成，不依赖会话 - 内置恒定时间比较
+   * matches()
+   *
+   * <p>前端配合：Axios 默认以 XSRF-TOKEN 为 xsrfCookieName、X-XSRF-TOKEN 为 xsrfHeaderName， 自动读取 Cookie 并注入请求头。
+   *
+   * @return SessionLessCookieCsrfTokenRepository 实例
    */
   @Bean
-  public CsrfTokenRepository csrfTokenRepository() {
-    CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
-    // Cookie 名称（默认 XSRF-TOKEN，Axios 默认读取此名称）
-    repository.setCookieName("XSRF-TOKEN");
-    // 请求头名称（默认 X-XSRF-TOKEN，Axios 默认使用此名称）
-    repository.setHeaderName("X-XSRF-TOKEN");
-    // Cookie 路径
-    repository.setCookiePath("/");
-    return repository;
+  public CsrfTokenRepository csrfTokenRepository(Environment environment) {
+    return new SessionLessCookieCsrfTokenRepository(environment);
   }
 
   /** Security Filter Chain Configuration 安全过滤器链配置 */
@@ -129,16 +129,16 @@ public class SecurityConfig {
                       response.setHeader("X-Frame-Options", "DENY");
                       // 禁止MIME嗅探
                       response.setHeader("X-Content-Type-Options", "nosniff");
-                      // HSTS强制HTTPS（生产环境生效）
-                      response.setHeader(
-                          "Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+                      // HSTS 强制 HTTPS（仅 prod 环境下发，dev/it 不下发以免污染本地 HTTP 调试）
+                      if (isProdProfile()) {
+                        response.setHeader(
+                            "Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+                      }
                       // 引用策略
                       response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
                       // 权限策略（禁止摄像头/麦克风/定位）
                       response.setHeader(
                           "Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-                      // XSS过滤（兜底）
-                      response.setHeader("X-XSS-Protection", "1; mode=block");
                     }))
 
         // ============================================================
@@ -152,7 +152,7 @@ public class SecurityConfig {
         // ============================================================
         .csrf(
             csrf ->
-                csrf.csrfTokenRepository(csrfTokenRepository())
+                csrf.csrfTokenRepository(csrfTokenRepository(environment))
                     .ignoringAntMatchers(
                         "/auth/sessions",
                         "/auth/users",
@@ -192,9 +192,9 @@ public class SecurityConfig {
                     .antMatchers("/css/**", "/js/**", "/images/**", "/favicon.ico")
                     .permitAll()
 
-                    // SpringDoc OpenAPI 文档端点（规范 §1 — API 文档自动生成）
+                    // SpringDoc OpenAPI 文档端点 — 仅超级管理员可见（API 文档收权，防止攻击面泄露）
                     .antMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
-                    .permitAll()
+                    .hasRole("SUPER_ADMIN")
 
                     // All other endpoints require authentication
                     .anyRequest()
@@ -210,5 +210,16 @@ public class SecurityConfig {
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
     return http.build();
+  }
+
+  /** 判断当前激活 profile 是否包含 prod（用于 HSTS 等仅生产环境生效的安全策略下发） */
+  private boolean isProdProfile() {
+    String[] activeProfiles = environment.getActiveProfiles();
+    for (String profile : activeProfiles) {
+      if ("prod".equalsIgnoreCase(profile)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -23,10 +23,15 @@ import javax.servlet.http.HttpServletRequestWrapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workorder.util.XssCleanUtil;
 
 /**
@@ -46,10 +51,19 @@ public class XssFilter implements Filter {
 
   private static final Logger logger = LoggerFactory.getLogger(XssFilter.class);
 
-  /** 跳过净化的路径前缀（密码含特殊字符、文件为二进制） */
+  /**
+   * 跳过净化的路径前缀（密码含特殊字符、文件为二进制）。
+   *
+   * <p>W-08：路径统一基于 getServletPath()（不含 context-path，不依赖硬编码 /api/v1 前缀），
+   * 前缀与实际 Controller 映射一致：/auth/sessions=登录、/auth/users=注册、/files/**=文件上传。
+   */
   private static final String[] EXCLUDED_PATH_PREFIXES = {
-      "/api/auth/sessions", "/api/auth/users", "/api/files/"
+      "/auth/sessions", "/auth/users", "/files/"
   };
+
+  /** W-08：Spring context-path（如 /api/v1），用于 servletPath 为空时的路径兜底解析 */
+  @Value("${server.servlet.context-path:}")
+  private String contextPath;
 
   @Override
   public void init(FilterConfig filterConfig) {
@@ -61,10 +75,18 @@ public class XssFilter implements Filter {
       throws IOException, ServletException {
 
     HttpServletRequest httpRequest = (HttpServletRequest) request;
-    String uri = httpRequest.getRequestURI();
+    String path = resolvePath(httpRequest);
 
-    // 跳过排除路径
-    if (isExcluded(uri)) {
+    // 跳过排除路径（登录、注册、文件上传等）
+    if (isExcluded(path)) {
+      // 排除路径若为 JSON 请求（登录/注册），仍做「只缓存不净化」包装：
+      // 下游 SqlInjectionInterceptor（W-22）会读取 JSON body 做注入扫描，
+      // 必须保证请求流可重复读取，否则 @RequestBody 反序列化将拿到空流
+      String excludedCt = httpRequest.getContentType();
+      if (excludedCt != null && excludedCt.toLowerCase().contains("application/json")) {
+        chain.doFilter(new XssRequestWrapper(httpRequest, false), response);
+        return;
+      }
       chain.doFilter(request, response);
       return;
     }
@@ -86,14 +108,33 @@ public class XssFilter implements Filter {
     chain.doFilter(wrapper, response);
   }
 
-  private boolean isExcluded(String uri) {
-    if (uri == null) return false;
+  private boolean isExcluded(String path) {
+    if (path == null) return false;
     for (String prefix : EXCLUDED_PATH_PREFIXES) {
-      if (uri.startsWith(prefix)) {
+      if (path.startsWith(prefix)) {
         return true;
       }
     }
     return false;
+  }
+
+  /**
+   * W-08：统一路径解析。优先取 getServletPath()（不含 context-path，随部署自动适配）；
+   * 若容器未提供 servletPath，则从 requestURI 剥离注入的 server.servlet.context-path 兜底。
+   */
+  private String resolvePath(HttpServletRequest request) {
+    String servletPath = request.getServletPath();
+    if (servletPath != null && !servletPath.isEmpty()) {
+      return servletPath;
+    }
+    String uri = request.getRequestURI();
+    if (uri == null) {
+      return "";
+    }
+    if (contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)) {
+      return uri.substring(contextPath.length());
+    }
+    return uri;
   }
 
   @Override
@@ -107,11 +148,27 @@ public class XssFilter implements Filter {
    */
   public static class XssRequestWrapper extends HttpServletRequestWrapper {
 
+    /** 用于按字段净化 JSON body（ObjectMapper 线程安全，可复用） */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private byte[] cachedBody;
+
+    /** 是否对缓存 body 做 Jsoup 净化（排除路径包装时为 false，仅缓存保证可重复读取） */
+    private final boolean cleanBody;
 
     /** 构造函数，缓存并净化请求体 */
     public XssRequestWrapper(HttpServletRequest request) {
+      this(request, true);
+    }
+
+    /**
+     * 构造函数。
+     *
+     * @param cleanBody true=缓存并净化 JSON body；false=仅缓存不净化（用于排除路径，保证下游可重复读取）
+     */
+    public XssRequestWrapper(HttpServletRequest request, boolean cleanBody) {
       super(request);
+      this.cleanBody = cleanBody;
       // 缓存请求体（用于 JSON 净化与重复读取）
       cacheBody(request);
     }
@@ -130,35 +187,80 @@ public class XssFilter implements Filter {
               sb.append(buf, 0, len);
             }
           }
-          // 净化 JSON body（仅净化字符串值，保留 JSON 结构）
-          String cleaned = XssCleanUtil.safeClean(sb.toString());
-          // safeClean 用 Safelist.none() 会移除所有标签但保留文本，
-          // 对 JSON 字符串可能误伤（如 "key":"<value>"）。改用宽松策略保留字符：
-          cleaned = cleanJsonBody(sb.toString());
-          cachedBody = cleaned.getBytes(StandardCharsets.UTF_8);
+          // W-08：按字段净化 JSON body（仅清洗非密码字段的字符串值，保留 JSON 结构；
+          // 密码字段如 password/oldPassword/newPassword/confirmPassword 不做 Jsoup 清洗，避免改写密码字符）
+          // cleanBody=false 时（排除路径）仅缓存不净化
+          cachedBody =
+              (cleanBody ? cleanJsonBody(sb.toString()) : sb.toString())
+                  .getBytes(StandardCharsets.UTF_8);
         }
       } catch (IOException e) {
         // 缓存失败时不阻塞请求，原样放行
       }
     }
 
-    /** 净化 JSON body：仅对字符串值做 HTML 标签剥离，保留 JSON 结构 简化策略：剥离 < > 标签括号内容（XSS payload 主要通过标签注入） */
+    /**
+     * 净化 JSON body：解析为 JSON 树，仅对非密码字段的字符串值做 Jsoup 清洗，
+     * 密码字段原样保留；解析失败时原样放行（不阻塞请求）。
+     */
     private String cleanJsonBody(String body) {
       if (body == null || body.isEmpty()) {
         return body;
       }
       try {
-        // 简单策略：用 Jsoup.relaxed 净化整个字符串，
-        // Jsoup 会保留文本内容，剥离 <script> 等危险标签
-        return XssCleanUtil.cleanRelaxed(body);
+        JsonNode root = OBJECT_MAPPER.readTree(body);
+        if (root == null) {
+          return body;
+        }
+        cleanNode(root);
+        return OBJECT_MAPPER.writeValueAsString(root);
       } catch (Exception e) {
         return body;
       }
     }
 
+    /** 递归清洗 JSON 节点中的字符串值（密码字段跳过） */
+    private void cleanNode(JsonNode node) {
+      if (node == null || !node.isContainerNode()) {
+        return;
+      }
+      if (node.isObject()) {
+        ObjectNode obj = (ObjectNode) node;
+        java.util.Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
+        while (fields.hasNext()) {
+          Map.Entry<String, JsonNode> field = fields.next();
+          JsonNode value = field.getValue();
+          if (value != null && value.isTextual()) {
+            if (!isPasswordField(field.getKey())) {
+              obj.put(field.getKey(), XssCleanUtil.cleanRelaxed(value.asText()));
+            }
+          } else {
+            cleanNode(value);
+          }
+        }
+      } else if (node.isArray()) {
+        for (JsonNode item : (ArrayNode) node) {
+          cleanNode(item);
+        }
+      }
+    }
+
+    /** 判断字段名是否带密码语义（password/passwd，忽略大小写与 -/_ 分隔符） */
+    private static boolean isPasswordField(String name) {
+      if (name == null) {
+        return false;
+      }
+      String normalized = name.toLowerCase().replace("-", "").replace("_", "");
+      return normalized.contains("password") || normalized.contains("passwd");
+    }
+
     @Override
     public String getParameter(String name) {
       String value = super.getParameter(name);
+      // W-08：密码字段不做 Jsoup 清洗，避免改写密码字符
+      if (isPasswordField(name)) {
+        return value;
+      }
       return XssCleanUtil.safeClean(value);
     }
 
@@ -166,6 +268,10 @@ public class XssFilter implements Filter {
     public String[] getParameterValues(String name) {
       String[] values = super.getParameterValues(name);
       if (values == null) return null;
+      // W-08：密码字段不做 Jsoup 清洗
+      if (isPasswordField(name)) {
+        return values;
+      }
       String[] cleaned = new String[values.length];
       for (int i = 0; i < values.length; i++) {
         cleaned[i] = XssCleanUtil.safeClean(values[i]);
@@ -178,6 +284,11 @@ public class XssFilter implements Filter {
       Map<String, String[]> original = super.getParameterMap();
       Map<String, String[]> result = new LinkedHashMap<>(original.size());
       for (Map.Entry<String, String[]> entry : original.entrySet()) {
+        // W-08：密码字段不做 Jsoup 清洗
+        if (isPasswordField(entry.getKey())) {
+          result.put(entry.getKey(), entry.getValue());
+          continue;
+        }
         String[] values = entry.getValue();
         String[] cleaned = new String[values.length];
         for (int i = 0; i < values.length; i++) {

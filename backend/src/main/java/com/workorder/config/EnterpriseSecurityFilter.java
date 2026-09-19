@@ -68,12 +68,17 @@ public class EnterpriseSecurityFilter implements Filter {
   /** AntPathMatcher 路径匹配器 */
   private final AntPathMatcher pathMatcher = new AntPathMatcher();
 
-  /** 排除安全检查的路径模式（AntPathMatcher 精确匹配） */
+  /**
+   * 排除安全检查的路径模式（AntPathMatcher 精确匹配）。
+   *
+   * <p>W-08：路径统一基于 getServletPath()（不含 context-path，不依赖硬编码 /api/v1 前缀），
+   * 模式与实际 Controller 映射前缀保持一致（如 /auth/sessions、/auth/users、/password-resets/** 等）。
+   */
   private static final String[] EXCLUDED_PATTERNS = {
-      "/api/auth/sessions",
-      "/api/auth/users",
-      "/api/password-resets/validate",
-      "/api/password-resets/confirm",
+      "/auth/sessions",
+      "/auth/users",
+      "/password-resets/validate",
+      "/password-resets/confirm",
       "/actuator/**",
       "/swagger*/**",
       "/api-docs/**",
@@ -81,10 +86,10 @@ public class EnterpriseSecurityFilter implements Filter {
       "/webjars/**"
   };
 
-  /** 限流路径模式 */
-  private static final String LOGIN_PATTERN = "/api/auth/sessions";
+  /** 限流路径模式（对应 AuthController POST /auth/sessions 登录端点） */
+  private static final String LOGIN_PATTERN = "/auth/sessions";
 
-  private static final String APPROVAL_PATTERN = "/api/approvals/**";
+  private static final String APPROVAL_PATTERN = "/approvals/**";
 
   /** 三级 Caffeine 令牌桶（key = IP 或 userId，value = 计数器） */
   private Cache<String, AtomicInteger> loginBucket;
@@ -100,6 +105,14 @@ public class EnterpriseSecurityFilter implements Filter {
 
   @Value("${work-order-system.rate-limit.default-per-minute:100}")
   private int defaultPerMinute;
+
+  /** 反代白名单（逗号分隔 IP，如 127.0.0.1,10.0.0.8）— W-16：仅当 remoteAddr 命中白名单时才信任 XFF 等代理头 */
+  @Value("${work-order-system.rate-limit.trusted-proxies:}")
+  private String trustedProxies;
+
+  /** Spring context-path（如 /api/v1）— W-08：用于 servletPath 为空时的路径兜底解析 */
+  @Value("${server.servlet.context-path:}")
+  private String contextPath;
 
   @Override
   public void init(FilterConfig filterConfig) {
@@ -128,11 +141,13 @@ public class EnterpriseSecurityFilter implements Filter {
     // 1. 设置安全响应头
     setSecurityHeaders(httpResponse);
 
-    String requestUri = httpRequest.getRequestURI();
+    // W-08：路径统一基于 getServletPath()（不含 context-path），
+    // 不依赖硬编码 /api/v1 前缀；servletPath 为空时从 URI 剥离 context-path 兜底
+    String requestPath = resolvePath(httpRequest);
     String method = httpRequest.getMethod();
 
     // 2. 排除路径直接放行
-    if (isExcludedPath(requestUri)) {
+    if (isExcludedPath(requestPath)) {
       chain.doFilter(request, response);
       return;
     }
@@ -176,7 +191,7 @@ public class EnterpriseSecurityFilter implements Filter {
         "default-src 'self'; "
             + "script-src 'self'; "
             + "style-src 'self' 'unsafe-inline'; "
-            + "img-src 'self' data: https:; "
+            + "img-src 'self' data:; "
             + "connect-src 'self'; "
             + "font-src 'self'; "
             + "frame-ancestors 'none'; "
@@ -230,7 +245,7 @@ public class EnterpriseSecurityFilter implements Filter {
    */
   private boolean checkRateLimit(HttpServletRequest request, HttpServletResponse response)
       throws IOException {
-    String uri = request.getRequestURI();
+    String uri = resolvePath(request);
     String clientIp = getClientIp(request);
     String userId = extractUserIdFromToken(request);
     // 优先用 userId 作为限流 key（已认证），否则用 IP
@@ -298,8 +313,18 @@ public class EnterpriseSecurityFilter implements Filter {
     return null;
   }
 
-  /** 获取客户端真实 IP */
+  /**
+   * 获取客户端真实 IP。
+   *
+   * <p>W-16：限流/锁定键一律以 request.getRemoteAddr() 为准（伪造 XFF 不能绕锁）。
+   * 仅当 remoteAddr 命中配置的反代白名单（work-order-system.rate-limit.trusted-proxies）时，
+   * 才回退解析 XFF/X-Real-IP 等代理头；否则直接返回 RemoteAddr。
+   */
   private String getClientIp(HttpServletRequest request) {
+    String remoteAddr = request.getRemoteAddr();
+    if (!isTrustedProxy(remoteAddr)) {
+      return (remoteAddr != null && !remoteAddr.isEmpty()) ? remoteAddr : "unknown";
+    }
     String ip = request.getHeader("X-Forwarded-For");
     if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
       ip = request.getHeader("Proxy-Client-IP");
@@ -311,12 +336,48 @@ public class EnterpriseSecurityFilter implements Filter {
       ip = request.getHeader("X-Real-IP");
     }
     if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-      ip = request.getRemoteAddr();
+      ip = remoteAddr;
     }
     if (ip != null && ip.contains(",")) {
       ip = ip.split(",")[0].trim();
     }
     return ip;
+  }
+
+  /** 判断远端地址是否为配置的反代白名单成员（精确匹配，支持 IPv4/IPv6 字面量） */
+  private boolean isTrustedProxy(String remoteAddr) {
+    if (remoteAddr == null || remoteAddr.isEmpty()) {
+      return false;
+    }
+    if (trustedProxies == null || trustedProxies.trim().isEmpty()) {
+      return false;
+    }
+    for (String proxy : trustedProxies.split(",")) {
+      String candidate = proxy.trim();
+      if (!candidate.isEmpty() && candidate.equals(remoteAddr)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * W-08：统一路径解析。优先取 getServletPath()（不含 context-path，随部署自动适配）；
+   * 若容器未提供 servletPath，则从 requestURI 剥离注入的 server.servlet.context-path 兜底。
+   */
+  private String resolvePath(HttpServletRequest request) {
+    String servletPath = request.getServletPath();
+    if (servletPath != null && !servletPath.isEmpty()) {
+      return servletPath;
+    }
+    String uri = request.getRequestURI();
+    if (uri == null) {
+      return "";
+    }
+    if (contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)) {
+      return uri.substring(contextPath.length());
+    }
+    return uri;
   }
 
   /** AntPathMatcher 路径匹配（避免 uri.contains() 子串绕过） */

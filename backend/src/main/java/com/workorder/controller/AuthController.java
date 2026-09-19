@@ -60,8 +60,8 @@ public class AuthController {
    * User login
    *
    * <p>OPTIMIZATION 三.3.1： 1. AuthService 完成认证后返回 Token + 用户信息 2. AuthController 把 Token 写入
-   * HttpOnly; Secure; SameSite=Strict Cookie 3. 响应体仍包含 Token（兼容强制改密流程：tempToken 用于 Authorization
-   * Header 调用 /auth/change-password）
+   * HttpOnly; Secure; SameSite=Strict Cookie 3. W-47：响应体不再下发 token 到 JS 内存（移除 token 字段），强制改密流程
+   * 改由浏览器凭 WOS_TOKEN HttpOnly Cookie 调用 /auth/change-password（JwtAuthenticationFilter 已支持从 Cookie 回退读取 Token）
    */
   @PostMapping("/sessions")
   public Result<Map<String, Object>> login(
@@ -73,6 +73,8 @@ public class AuthController {
       String token = (String) result.getData().get("token");
       if (token != null) {
         authCookieUtil.setAuthCookie(response, token, jwtExpirationMs);
+        // W-47：Token 仅驻留在 HttpOnly Cookie，不下发到 JS 内存，避免被 XSS 旁路窃取
+        result.getData().remove("token");
         logger.debug("[Login] 已设置 HttpOnly Cookie (Max-Age={}s)", jwtExpirationMs / 1000);
       }
     }

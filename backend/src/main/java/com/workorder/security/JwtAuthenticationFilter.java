@@ -14,11 +14,11 @@ import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.workorder.config.MetricsConfig;
-import com.workorder.dao.UserMapper;
 
 /**
  * JWT Authentication Filter Extract and validate Token from Header on each request
@@ -40,10 +40,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
    */
   private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
+  /** 应用 context-path（与 server.servlet.context-path=/api/v1 保持一致，用于路径匹配兜底） */
+  private static final String CONTEXT_PATH = "/api/v1";
+
+  private final AntPathMatcher pathMatcher = new AntPathMatcher();
+
   private final JwtUtil jwtUtil;
   private final CustomUserDetailsService userDetailsService;
   private final MetricsConfig metricsConfig;
-  private final UserMapper userMapper;
+  private final TokenVersionCache tokenVersionCache;
   private final AuthCookieUtil authCookieUtil;
 
   /** Constructor injection (recommended) */
@@ -52,12 +57,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       JwtUtil jwtUtil,
       CustomUserDetailsService userDetailsService,
       MetricsConfig metricsConfig,
-      UserMapper userMapper,
+      TokenVersionCache tokenVersionCache,
       AuthCookieUtil authCookieUtil) {
     this.jwtUtil = jwtUtil;
     this.userDetailsService = userDetailsService;
     this.metricsConfig = metricsConfig;
-    this.userMapper = userMapper;
+    this.tokenVersionCache = tokenVersionCache;
     this.authCookieUtil = authCookieUtil;
   }
 
@@ -88,13 +93,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             // ============================================
             // OPTIMIZATION 三.3.1：tokenVersion 一致性校验
-            // 从 JWT 荷载解析 tokenVersion，与数据库 sys_user.token_version 比对：
+            // 从 JWT 荷载解析 tokenVersion，与数据库 sys_user.token_version 比对（经 Redis 60s 缓存）：
             // - 一致 → Token 有效，设置 SecurityContext
             // - 不一致 → 用户已改密/被禁用/已注销，Token 立即失效，拒绝请求
             // 兼容旧 Token（无 tokenVersion 声明）→ 视为版本 0，与 DB 默认值 0 对齐
             // ============================================
             Long tokenVersionInToken = jwtUtil.getTokenVersionFromToken(token);
-            Long tokenVersionInDb = userMapper.selectTokenVersion(userDetails.getUserId());
+            Long tokenVersionInDb = tokenVersionCache.getOrLoad(userDetails.getUserId());
 
             if (tokenVersionInDb == null) {
               // 用户已被删除（DB 软删除或硬删除），拒绝
@@ -172,20 +177,39 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   }
 
   /**
-   * Determine if should filter this request (optional optimization) Only exclude login/register
-   * endpoints, all other /auth/* endpoints need JWT validation
+   * Determine if should filter this request (optional optimization). 排除登录、公开与静态资源端点；其余端点（含
+   * /auth/current-user、/auth/users 等）均需 JWT 校验。
    */
   @Override
   protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
     String path = request.getRequestURI();
 
-    // 只排除登录和注册接口（不需要Token）
-    // 其他所有接口（包括 /auth/current-user）都需要JWT验证
-    return path.equals("/api/auth/sessions")
-        || path.equals("/api/auth/users")
-        || path.startsWith("/api/public/")
-        || path.startsWith("/static/")
-        || path.endsWith(".html")
+    // 同时匹配无前缀（MockMvc 场景）与 /api/v1 前缀（真实 context-path 场景）两种形式。
+    // 注意：/auth/users 有 @PreAuthorize("hasRole('SUPER_ADMIN')")，必须保留在此过滤器链内，
+    // 否则合法超管携带 Cookie 调用时无法建立 SecurityContext 会被拒绝。
+    return matchesAny(
+            path,
+            "/auth/sessions",
+            CONTEXT_PATH + "/auth/sessions",
+            "/public/**",
+            CONTEXT_PATH + "/public/**",
+            "/static/**")
+        || isStaticResource(path);
+  }
+
+  /** 使用 AntPathMatcher 匹配任一模式（支持 ** 通配符） */
+  private boolean matchesAny(@NonNull String path, @NonNull String... patterns) {
+    for (String pattern : patterns) {
+      if (pathMatcher.match(pattern, path)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 静态资源后缀（不参与鉴权） */
+  private boolean isStaticResource(@NonNull String path) {
+    return path.endsWith(".html")
         || path.endsWith(".css")
         || path.endsWith(".js")
         || path.endsWith(".png")

@@ -16,12 +16,17 @@
 
 ## 快速开始
 
+> 完整文档见 [docs/](docs/README.md)：需求规格、总体设计、数据库设计、接口规范、快速开始、编码规范、测试说明、部署指南、常见问题排查与变更记录。
+> 容器化部署（Dockerfile/docker-compose）尚未交付，详见 docs/deployment-guide.md 待办；勿执行文档中旧有的 docker 命令。
+
 ### 环境要求
-- JDK 1.8+
+- JDK 11+
 - Node.js 16+
 - PostgreSQL 12+
 - Redis 6.0+
 - Maven 3.6+
+
+> CI 使用 Temurin 17 编译（源码 target 11，见 backend/pom.xml）。
 
 ### 1. 初始化数据库
 
@@ -44,7 +49,7 @@ cd backend
 mvn clean package -DskipTests
 java -jar target/work-order-system-2.8.2.jar
 ```
-后端服务地址: `http://localhost:8080/api`
+后端服务地址: `http://localhost:8080/api/v1`（context-path=/api/v1，见 backend/src/main/resources/application-dev.yml）
 
 ### 3. 启动前端
 ```bash
@@ -86,15 +91,19 @@ Work Order Approval System/
 │   └── package.json           # 前端依赖配置
 ├── sql/                       # 数据库脚本（已废弃，仅保留历史参考）
 │   └── init.sql              # ⚠️ 废弃，改用 schema-init.sql 或 Flyway
-└── docs/                      # 项目文档
-    ├── TECHNICAL_DOC.md      # 技术架构文档
-    ├── API_DOC.md            # 接口文档
-    ├── deployment-checklist.md  # 部署安全检查清单
-    ├── nginx.conf            # Nginx HTTPS 反向代理配置
-    ├── alertmanager-rules.yml  # Prometheus 告警规则
-    ├── https-automation.sh   # Let's Encrypt 证书自动化
-    ├── db-grants.sql         # 数据库最小权限账号
-    └── redis-hardening.conf  # Redis 加固配置
+└── docs/                      # 项目文档（11 文件标准结构）
+    ├── README.md            # 文档索引与维护约定
+    ├── srs.md               # 需求规格说明
+    ├── architecture.md      # 总体设计
+    ├── database-design.md   # 数据库设计
+    ├── api-spec.md          # 接口规范
+    ├── getting-started.md   # 快速开始
+    ├── coding-standards.md  # 编码规范
+    ├── testing.md           # 测试说明
+    ├── deployment-guide.md  # 部署指南
+    ├── troubleshooting.md   # 常见问题排查
+    ├── CHANGELOG.md         # 变更记录
+    └── assets/              # 图片与架构图资源
 ```
 
 ## 核心模块说明
@@ -117,7 +126,7 @@ Work Order Approval System/
 - 乐观锁机制处理数据版本冲突
 - Redis发布订阅实现状态变更通知
 
-详见：`docs/TECHNICAL_DOC.md` 第五章
+详见：`docs/architecture.md` 第 5 章（工作流引擎集成）
 
 ### 4. 日志与追溯
 - 完整记录审批全流程日志（操作人、时间、意见、状态变更）
@@ -136,7 +145,7 @@ Work Order Approval System/
 | 审批 | POST /approval | 审批操作（通过/驳回） |
 | 审批 | GET /approval/log/{id} | 审批日志查询 |
 
-完整接口文档见：`docs/API_DOC.md`
+完整接口文档见：`docs/api-spec.md`
 
 ## 技术栈详情
 
@@ -163,12 +172,12 @@ Work Order Approval System/
 ## 部署建议
 
 ### 生产环境部署
-1. **数据库**: PostgreSQL主从复制，定期备份；最小权限账号（见 `docs/db-grants.sql`）
-2. **缓存**: Redis Cluster集群模式；启用密码与ACL（见 `docs/redis-hardening.conf`）
-3. **应用**: 多实例部署 + Nginx负载均衡（HTTPS 反向代理见 `docs/nginx.conf`）
-4. **监控**: Prometheus + Grafana + AlertManager（告警规则见 `docs/alertmanager-rules.yml`）
+1. **数据库**: PostgreSQL主从复制，定期备份（见 [部署指南](./docs/deployment-guide.md)）
+2. **缓存**: Redis Cluster集群模式；启用密码与ACL
+3. **应用**: 多实例部署 + Nginx负载均衡（HTTPS 反向代理示例见 [部署指南](./docs/deployment-guide.md)）
+4. **监控**: Prometheus + Grafana + AlertManager
 5. **日志**: ELK Stack日志收集分析（结构化日志见 `backend/src/main/resources/logback-spring.xml`）
-6. **证书**: Let's Encrypt 自动化签发与续期（见 `docs/https-automation.sh`）
+6. **证书**: Let's Encrypt 自动化签发与续期
 
 ### 必备环境变量（生产环境）
 ```bash
@@ -182,27 +191,12 @@ SERVER_PORT
 SPRING_PROFILES_ACTIVE=prod
 ```
 
-完整部署安全检查清单见：`docs/deployment-checklist.md`
+完整部署与安全检查说明见 [部署指南](./docs/deployment-guide.md)。
 
-### Docker部署（可选）
-```bash
-# 构建镜像
-docker build -t work-order-system:latest .
+### 容器化部署（待办）
 
-# 运行容器
-docker run -d \
-  --name work-order-api \
-  -p 8080:8080 \
-  -e DB_HOST=postgres \
-  -e DB_PASSWORD=... \
-  -e REDIS_HOST=redis \
-  -e REDIS_PASSWORD=... \
-  -e JWT_SECRET=... \
-  -e AES_ENCRYPTION_KEY=... \
-  -e MESSAGE_SIGNING_KEY=... \
-  -e SPRING_PROFILES_ACTIVE=prod \
-  work-order-system:latest
-```
+> Dockerfile 与 docker-compose 尚未交付，容器化部署命令目前不可用。
+> 交付前请勿执行历史文档中的 docker 命令；进度详见 `docs/deployment-guide.md` 容器化章节与 `docs/CHANGELOG.md` 待办。
 
 ## 扩展方向
 
@@ -215,17 +209,20 @@ docker run -d \
 
 ## 文档索引
 
-- 📖 [技术架构文档](./docs/TECHNICAL_DOC.md) - 系统设计、数据库、核心功能实现
-- 📚 [API接口文档](./docs/API_DOC.md) - 完整的RESTful API说明
-- 💾 [数据库初始化脚本](./backend/src/main/resources/sql/schema-init.sql) - 幂等建表+初始化数据（PostgreSQL）
-- 🔄 [Flyway迁移脚本](./backend/src/main/resources/db/migration/) - V1/V2/V3 增量迁移
-- 🔒 [部署安全检查清单](./docs/deployment-checklist.md) - 生产环境 8 大节安全检查
-- 🌐 [Nginx HTTPS配置](./docs/nginx.conf) - TLS 1.2/1.3 + 安全头 + 限流
-- 🔑 [HTTPS证书自动化](./docs/https-automation.sh) - Let's Encrypt 签发与续期
-- 🚨 [Prometheus告警规则](./docs/alertmanager-rules.yml) - 安全+系统两组告警
-- 🛡️ [数据库权限配置](./docs/db-grants.sql) - 最小权限账号
-- ⚡ [Redis加固配置](./docs/redis-hardening.conf) - 密码+ACL+危险命令禁用
-- 🔍 [CI/CD安全扫描](./.github/workflows/security-scan.yml) - 依赖扫描+CodeQL+密钥扫描
+- 📖 [项目文档入口](./docs/README.md) - 文档索引与维护约定
+- 📚 [需求规格说明](./docs/srs.md) - 项目定位与核心能力
+- 🏗 [总体设计](./docs/architecture.md) - 系统架构、后端/前端设计、安全架构、工作流集成
+- 💾 [数据库设计](./docs/database-design.md) - ER 图、表设计、数据字典
+- 📡 [接口规范](./docs/api-spec.md) - RESTful API 规范
+- 🧭 [快速开始](./docs/getting-started.md) - 环境要求、启动步骤、默认账号
+- 📏 [编码规范](./docs/coding-standards.md) - 项目约束与企业级规范、测试与 CI 门禁
+- 🧪 [测试说明](./docs/testing.md) - 测试规范与回归验收
+- 🚀 [部署指南](./docs/deployment-guide.md) - 生产部署、Nginx、监控备份（容器化待办）
+- 🔧 [常见问题排查](./docs/troubleshooting.md) - 典型问题与根因分析
+- 📝 [变更记录](./docs/CHANGELOG.md) - 版本与待办
+- 🔄 [Flyway迁移脚本](./backend/src/main/resources/db/migration/) - V1~V12 增量迁移
+- 🔍 [CI 流水线](./.github/workflows/ci.yml) - build → test → lint → package
+- 🛡 [安全扫描流水线](./.github/workflows/security-scan.yml) - 依赖扫描 + CodeQL + 密钥扫描
 
 ## 开发团队
 
@@ -239,4 +236,4 @@ docker run -d \
 
 ---
 
-> **提示**: 如有问题请查看 `docs/TECHNICAL_DOC.md` 获取详细的技术实现说明。
+> **提示**: 如有问题请查看 [常见问题排查](./docs/troubleshooting.md)，详细技术说明见 [总体设计](./docs/architecture.md)。

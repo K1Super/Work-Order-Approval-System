@@ -125,7 +125,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh, Plus } from '@element-plus/icons-vue'
 import { getMyWorkOrders, submitDraft, resubmitWorkOrder, withdrawWorkOrder } from '@/api/workorder'
-import { formatDateTime, ORDER_STATUS_MAP, ORDER_TYPE_MAP, PRIORITY_MAP, ORDER_STATUS_OPTIONS, ORDER_TYPE_OPTIONS, WORK_ORDER_STATUS, WORK_ORDER_TYPE } from '@/utils/common'
+import { formatDateTime, ORDER_STATUS_MAP, ORDER_TYPE_MAP, PRIORITY_MAP, ORDER_STATUS_OPTIONS, ORDER_TYPE_OPTIONS, WORK_ORDER_STATUS } from '@/utils/common'
 import { RESULT_CODE } from '@/constants'
 
 const router = useRouter()

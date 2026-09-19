@@ -100,10 +100,10 @@
 
         <el-form-item label="附件上传">
           <el-upload
-            action="#"
             :auto-upload="false"
             :limit="5"
             :accept="currentAcceptFormats"
+            :http-request="handleHttpUpload"
             :on-change="handleFileChange"
             :on-remove="handleFileRemove"
             :on-exceed="handleExceed"
@@ -155,7 +155,8 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Upload, InfoFilled } from '@element-plus/icons-vue'
+import { Upload } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 import { createDraft, submitWorkOrder } from '@/api/workorder'
 import { getCurrentUser } from '@/api/auth'
 import logger from '@/utils/logger'
@@ -163,7 +164,6 @@ import {
   ORDER_TYPE_OPTIONS,
   ORDER_TYPE_FILE_EXTENSIONS,
   DANGEROUS_FILE_EXTS,
-  PRIORITY_MAP,
   WORK_ORDER_TYPE
 } from '@/utils/common'
 
@@ -212,7 +212,6 @@ const isManager = computed(() => (currentUser.orgLevel || 4) <= 2)
 // 计算属性：部门是否锁定
 // 规则：低/中优先级 + 有部门信息 + 非管理层 时锁定显示当前用户部门
 const isDepartmentLocked = computed(() => form.priority < 3 && !!currentUser.department && !isManager.value)
-const isDepartmentEditable = computed(() => form.priority >= 3 || !currentUser.department || isManager.value)
 
 // 计算属性：根据优先级和用户级别返回可选的部门列表
 // 管理级：可选择所有部门
@@ -377,8 +376,30 @@ function handleFileRemove(file) {
 }
 
 // 文件数量超限
-function handleExceed(files, fileList) {
+function handleExceed(files) {
   ElMessage.warning(`当前限制选择 5 个文件，本次选择了 ${files.length} 个文件`)
+}
+
+// W-42：真实上传单个文件到后端，返回文件标识（fileId）
+async function uploadFile(file) {
+  const fd = new FormData()
+  // el-upload 传入的 UploadFile，其 .raw 为原生 File 对象
+  fd.append('file', file.raw || file)
+  // 显式 multipart（覆盖 axios 实例默认 application/json，避免 FormData 被 JSON 化）
+  const res = await request.post('/files/upload', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return res.data?.fileId || null
+}
+
+// ElUpload 的 http-request 自定义上传（真实调用后端 /files/upload）
+async function handleHttpUpload(options) {
+  try {
+    const fileId = await uploadFile(options.file)
+    options.onSuccess({ fileId })
+  } catch (e) {
+    options.onError(e)
+  }
 }
 
 async function handleSubmit(isSubmit) {
@@ -402,9 +423,31 @@ async function handleSubmit(isSubmit) {
 
       submitting.value = true
       try {
+        // W-42：真实上传已选附件，收集文件标识随工单一起提交
+        const attachmentFileIds = []
+        for (const f of selectedFiles.value) {
+          if (f.fileId) {
+            attachmentFileIds.push(f.fileId)
+            continue
+          }
+          try {
+            const fileId = await uploadFile(f)
+            if (!fileId) {
+              ElMessage.error(`文件「${f.name}」上传失败，未返回文件标识`)
+              return
+            }
+            f.fileId = fileId
+            attachmentFileIds.push(fileId)
+          } catch (e) {
+            ElMessage.error(`文件「${f.name}」上传失败，请重试`)
+            return
+          }
+        }
+
         const submitData = {
           ...form,
-          content: finalContent
+          content: finalContent,
+          attachmentUrl: attachmentFileIds.join(',')
         }
 
         if (isSubmit) {

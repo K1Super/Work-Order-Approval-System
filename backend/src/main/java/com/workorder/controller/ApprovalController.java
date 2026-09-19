@@ -3,6 +3,8 @@ package com.workorder.controller;
 
 import java.util.List;
 
+import javax.validation.Valid;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -46,7 +48,7 @@ public class ApprovalController {
   @PostMapping
   @PreAuthorize("hasAnyAuthority('system:user', 'workorder:approve', 'workorder:pending')")
   @AntiReplay(timeWindow = 300)
-  public Result<WorkOrder> handleApproval(@RequestBody ApprovalDTO approvalDTO) {
+  public Result<WorkOrder> handleApproval(@Valid @RequestBody ApprovalDTO approvalDTO) {
     Long operatorId = getCurrentUserId();
     return workOrderService.handleApproval(approvalDTO, operatorId);
   }
@@ -54,6 +56,7 @@ public class ApprovalController {
   /** 快捷审批通过 */
   @PostMapping("/{workOrderId}/approve")
   @PreAuthorize("hasAnyAuthority('system:user', 'workorder:approve', 'workorder:pending')")
+  @AntiReplay(timeWindow = 300)
   public Result<WorkOrder> quickApprove(
       @PathVariable Long workOrderId, @RequestParam(required = false) String comment) {
     ApprovalDTO dto = new ApprovalDTO();
@@ -68,6 +71,7 @@ public class ApprovalController {
   /** 快捷驳回 */
   @PostMapping("/{workOrderId}/reject")
   @PreAuthorize("hasAnyAuthority('system:user', 'workorder:approve', 'workorder:pending')")
+  @AntiReplay(timeWindow = 300)
   public Result<WorkOrder> quickReject(
       @PathVariable Long workOrderId,
       @RequestParam(required = false, defaultValue = "") String reason) {

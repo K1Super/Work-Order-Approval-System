@@ -4,12 +4,10 @@ import { ElLoading } from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 import App from './App.vue'
-import router, { addDynamicRoutes } from './router'
-import { useUserStore } from './store/user'
+import router from './router'
 import { registerDirectives } from './directives' // XSS 净化 + 权限指令（入口规范：指令抽离独立文件）
 import './utils/request' // Axios 拦截器挂载（CSRF Token + withCredentials Cookie + TraceId 透传 + 错误处理）
 import './styles/index.scss'
-import logger from '@/utils/logger'
 import { setupGlobalErrorHandlers } from '@/utils/errorReporter'
 
 // Element Plus 全局调用型组件样式（按需引入后需手动注入，规范 §2 第 5 步 ElementPlus 按需）
@@ -39,17 +37,10 @@ if (import.meta.env.PROD) {
   app.config.performance = false
 }
 
-// ===== 6. 全局异常捕获前置（规范 §2 第 5 条，mount 前挂载） =====
-// 使用统一日志工具输出（规范条款 1：统一出口，禁止裸调用 console）
-app.config.errorHandler = (err, _vm, info) => {
-  logger.error('vue_render_error', 'Vue 组件渲染异常', { info, error: err?.message || String(err) })
-  // 防止组件渲染错误导致白屏：不抛出异常，仅记录日志
-}
-window.addEventListener('unhandledrejection', (e) => {
-  logger.error('unhandled_promise_rejection', '未处理的 Promise 拒绝', { reason: e.reason?.message || String(e.reason) })
-  // 防止未处理的 Promise 拒绝导致页面崩溃
-  e.preventDefault()
-})
+// ===== 6. 全局异常捕获 + 错误上报（W-44：统一由 errorReporter 注册） =====
+// errorReporter 通过 logger 输出；生产环境 WARN/ERROR 会自动批量上报到后端，
+// 开发环境仅落到控制台（logger 内部按 import.meta.env.PROD 判断是否上报）
+setupGlobalErrorHandlers(app)
 
 // ===== 7. initApp：白屏治理 + 权限预加载 + 动态路由（规范 §2 第 3 条 + 第 7 步） =====
 // 流水线：开启 Loading → 并行拉取用户信息/RBAC（3 秒超时兜底）→ addRoute → router.isReady → 关闭 Loading → mount

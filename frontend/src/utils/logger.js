@@ -12,6 +12,22 @@
 
 // ==================== 敏感数据脱敏（规范条款 2/6） ====================
 
+/**
+ * 从 Cookie 读取指定名称的值
+ * 用于读取后端 Spring Security CookieCsrfTokenRepository 写入的 XSRF-TOKEN，
+ * 手动注入 X-XSRF-TOKEN 请求头（logger 保持独立，不复用 axios 实例，避免循环依赖）
+ *
+ * @param {string} name Cookie 名称
+ * @returns {string|null} Cookie 值；不存在返回 null
+ */
+function getCookie(name) {
+  if (typeof document === 'undefined' || !name) return null
+  const match = document.cookie.match(
+    new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)')
+  )
+  return match ? decodeURIComponent(match[1]) : null
+}
+
 const SENSITIVE_PATTERNS = [
   // JSON 格式 "key":"value" → "key":"******"
   { pattern: /"password"\s*:\s*"[^"]+"/g, replacement: '"password":"******"' },
@@ -195,16 +211,19 @@ class Logger {
     const batch = this._reportQueue.splice(0)
     try {
       const payload = JSON.stringify({ logs: batch })
-      // sendBeacon 优先（页面卸载时仍可发送）
-      if (navigator.sendBeacon) {
-        const blob = new Blob([payload], { type: 'application/json' })
-        const sent = navigator.sendBeacon('/api/client-logs/report', blob)
-        if (sent) return
+      // W-48：统一上报路径为 /api/v1/client-logs/report（对齐后端 context-path /api/v1，
+      // 与 api/log.js 通过 request 实例 baseURL 拼接出的结果一致）
+      // 上报需带 CSRF token（后端 POST 统一校验 XSRF；permitAll 仅豁免认证、不豁免 CSRF）
+      // logger 保持裸 fetch 以规避 request.js ↔ logger.js 循环依赖，
+      // 这里手动从 XSRF-TOKEN Cookie 读取并注入 X-XSRF-TOKEN 请求头
+      const headers = { 'Content-Type': 'application/json' }
+      const xsrf = getCookie('XSRF-TOKEN')
+      if (xsrf) {
+        headers['X-XSRF-TOKEN'] = xsrf
       }
-      // 降级为 fetch
-      await fetch('/api/client-logs/report', {
+      await fetch('/api/v1/client-logs/report', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: payload,
         credentials: 'include',
         keepalive: true

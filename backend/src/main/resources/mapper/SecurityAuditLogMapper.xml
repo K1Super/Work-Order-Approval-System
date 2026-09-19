@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.workorder.dao.SecurityAuditLogMapper">
 
-    <!-- Result Map -->
+    <!-- Result Map（W-05 修复：V7 已删除 is_deleted 列，以 Schema 为事实源） -->
     <resultMap id="AuditLogResultMap" type="com.workorder.entity.SecurityAuditLog">
         <id column="id" property="id"/>
         <result column="user_id" property="userId"/>
@@ -15,7 +15,6 @@
         <result column="status" property="status"/>
         <result column="details" property="details"/>
         <result column="create_time" property="createTime"/>
-        <result column="is_deleted" property="isDeleted"/>
         <result column="create_by" property="createBy"/>
         <result column="update_by" property="updateBy"/>
         <!-- 规范条款 7：结构化日志字段 -->
@@ -28,71 +27,69 @@
         <result column="error_location" property="errorLocation"/>
     </resultMap>
 
-    <!-- Insert audit log -->
+    <!-- Insert audit log（W-05 修复：移除 is_deleted 列） -->
     <insert id="insert" parameterType="com.workorder.entity.SecurityAuditLog" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO sys_security_audit_log (
             user_id, username, action_type, description,
             ip_address, user_agent, request_url,
-            status, details, is_deleted, create_by,
+            status, details, create_by,
             trace_id, span_id, action, path, duration, error_code, error_location
         ) VALUES (
             #{userId}, #{username}, #{actionType}, #{description},
             #{ipAddress}, #{userAgent}, #{requestUrl},
-            #{status}, CAST(#{details} AS JSON), 0, #{createBy},
+            #{status}, CAST(#{details} AS JSON), #{createBy},
             #{traceId}, #{spanId}, #{action}, #{path}, #{duration}, #{errorCode}, #{errorLocation}
         )
     </insert>
 
-    <!-- Query with pagination and filters -->
-    <select id="queryWithPagination" resultType="java.util.HashMap">
-        SELECT
-            t.*,
-            (SELECT COUNT(*) FROM sys_security_audit_log WHERE 1=1
-            AND is_deleted = 0
-            <if test="params.userId != null">
-                AND user_id = #{params.userId}
-            </if>
-            <if test="params.actionType != null and params.actionType != ''">
-                AND action_type = #{params.actionType}
-            </if>
-            <if test="params.status != null and params.status != ''">
-                AND status = #{params.status}
-            </if>
-            <if test="params.ipAddress != null and params.ipAddress != ''">
-                AND ip_address LIKE CONCAT('%', #{params.ipAddress}, '%')
-            </if>
-            <if test="params.startDate != null and params.startDate != ''">
-                AND create_time &gt;= #{params.startDate}::timestamp
-            </if>
-            <if test="params.endDate != null and params.endDate != ''">
-                AND create_time &lt;= #{params.endDate}::timestamp
-            </if>
-            ) AS total
-        FROM (
-            SELECT * FROM sys_security_audit_log
-            WHERE 1=1
-            AND is_deleted = 0
-            <if test="params.userId != null">
-                AND user_id = #{params.userId}
-            </if>
-            <if test="params.actionType != null and params.actionType != ''">
-                AND action_type = #{params.actionType}
-            </if>
-            <if test="params.status != null and params.status != ''">
-                AND status = #{params.status}
-            </if>
-            <if test="params.ipAddress != null and params.ipAddress != ''">
-                AND ip_address LIKE CONCAT('%', #{params.ipAddress}, '%')
-            </if>
-            <if test="params.startDate != null and params.startDate != ''">
-                AND create_time &gt;= #{params.startDate}::timestamp
-            </if>
-            <if test="params.endDate != null and params.endDate != ''">
-                AND create_time &lt;= #{params.endDate}::timestamp
-            </if>
-            ORDER BY create_time DESC
-            LIMIT #{params.pageSize} OFFSET (#{params.pageNum} - 1) * #{params.pageSize}
-        ) t
+    <!-- Query with pagination and filters（W-34 修复：标准分页查询，返回数据行列表，total 由 countByFilters 单独统计） -->
+    <select id="queryWithPagination" resultMap="AuditLogResultMap">
+        SELECT * FROM sys_security_audit_log
+        WHERE 1=1
+        <if test="params.userId != null">
+            AND user_id = #{params.userId}
+        </if>
+        <if test="params.actionType != null and params.actionType != ''">
+            AND action_type = #{params.actionType}
+        </if>
+        <if test="params.status != null and params.status != ''">
+            AND status = #{params.status}
+        </if>
+        <if test="params.ipAddress != null and params.ipAddress != ''">
+            AND ip_address LIKE CONCAT('%', #{params.ipAddress}, '%')
+        </if>
+        <if test="params.startDate != null and params.startDate != ''">
+            AND create_time &gt;= #{params.startDate}::timestamp
+        </if>
+        <if test="params.endDate != null and params.endDate != ''">
+            AND create_time &lt;= #{params.endDate}::timestamp
+        </if>
+        ORDER BY create_time DESC
+        LIMIT #{params.pageSize} OFFSET (#{params.pageNum} - 1) * #{params.pageSize}
+    </select>
+
+    <!-- Count with filters（W-34 修复：补齐 countByFilters 语句，与 queryWithPagination 过滤条件一致） -->
+    <select id="countByFilters" resultType="int">
+        SELECT COUNT(*) FROM sys_security_audit_log
+        WHERE 1=1
+        <if test="params.userId != null">
+            AND user_id = #{params.userId}
+        </if>
+        <if test="params.actionType != null and params.actionType != ''">
+            AND action_type = #{params.actionType}
+        </if>
+        <if test="params.status != null and params.status != ''">
+            AND status = #{params.status}
+        </if>
+        <if test="params.ipAddress != null and params.ipAddress != ''">
+            AND ip_address LIKE CONCAT('%', #{params.ipAddress}, '%')
+        </if>
+        <if test="params.startDate != null and params.startDate != ''">
+            AND create_time &gt;= #{params.startDate}::timestamp
+        </if>
+        <if test="params.endDate != null and params.endDate != ''">
+            AND create_time &lt;= #{params.endDate}::timestamp
+        </if>
     </select>
 
 </mapper>

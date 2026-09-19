@@ -198,6 +198,26 @@
     </update>
 
     <!--
+        W-04 修复：草稿编辑白名单更新（带乐观锁）
+        仅更新业务可编辑列 title/content/remark/attachment_url/department，
+        不含 status/complete_time/department_id/priority/order_type，杜绝 Mass Assignment。
+    -->
+    <update id="updateDraft">
+        UPDATE work_order
+        <set>
+            <if test="title != null">title = #{title},</if>
+            <if test="content != null">content = #{content},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            <if test="attachmentUrl != null">attachment_url = #{attachmentUrl},</if>
+            <if test="department != null">department = #{department},</if>
+            <if test="updateTime != null">update_time = #{updateTime, typeHandler=com.workorder.config.InstantTypeHandler},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            version = version + 1,
+        </set>
+        WHERE id = #{id} AND version = #{version} AND is_deleted = 0
+    </update>
+
+    <!--
         更新状态（带乐观锁，OPTIMIZATION 二）
         仅更新 status + version，用于纯状态转换场景（如终止/归档）
     -->
@@ -247,8 +267,9 @@
     <update id="appendRemarkForOrphanWorkOrder">
         UPDATE work_order
         SET remark = CONCAT(COALESCE(remark, ''), #{remarkAppend}),
-            update_time = CURRENT_TIMESTAMP
-        WHERE id = #{workOrderId} AND is_deleted = 0
+            update_time = CURRENT_TIMESTAMP,
+            version = version + 1
+        WHERE id = #{workOrderId} AND version = #{version} AND is_deleted = 0
     </update>
 
 </mapper>

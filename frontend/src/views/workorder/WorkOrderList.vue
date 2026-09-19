@@ -108,7 +108,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
-import { getAllWorkOrders, terminateWorkOrder, handleApproval } from '@/api/workorder'
+import { getAllWorkOrders, terminateWorkOrder } from '@/api/workorder'
 import { formatDateTime, ORDER_STATUS_MAP, ORDER_TYPE_MAP, ORDER_STATUS_OPTIONS, ORDER_TYPE_OPTIONS, WORK_ORDER_STATUS } from '@/utils/common'
 
 const router = useRouter()

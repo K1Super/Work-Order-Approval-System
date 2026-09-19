@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.workorder.common.enums.UserStatusEnum;
 import com.workorder.common.result.Result;
 import com.workorder.dao.ResignedEmployeeMapper;
 import com.workorder.dao.UserMapper;
@@ -55,8 +56,10 @@ public class ResignedEmployeeServiceImpl implements IResignedEmployeeService {
       return Result.error("员工不存在");
     }
 
-    // 2. 检查是否已离职或已删除
-    if (employee.getStatus() != null && (employee.getStatus() == -1 || employee.getStatus() == -2)) {
+    // 2. 检查是否已离职或已删除（W-06 修复：枚举替代魔法数字）
+    if (employee.getStatus() != null
+        && (employee.getStatus() == UserStatusEnum.DELETED.getCode()
+            || employee.getStatus() == UserStatusEnum.RESIGNED.getCode())) {
       return Result.error("该员工已离职或已删除，无法重复操作");
     }
 
@@ -124,10 +127,10 @@ public class ResignedEmployeeServiceImpl implements IResignedEmployeeService {
     }
     logger.info("离职记录已保存: id={}, userId={}", resigned.getId(), userId);
 
-    // 7. 更新原用户状态为已离职(-2)
+    // 7. 更新原用户状态为已离职（W-06 修复：枚举替代魔法数字 -2）
     User update = new User();
     update.setId(userId);
-    update.setStatus(-2); // 已离职状态
+    update.setStatus(UserStatusEnum.RESIGNED.getCode()); // 已离职状态
     int updateResult = userMapper.updateById(update);
     if (updateResult <= 0) {
       logger.error("更新用户状态为离职失败: userId={}", userId);

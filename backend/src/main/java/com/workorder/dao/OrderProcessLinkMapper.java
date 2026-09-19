@@ -22,11 +22,20 @@ public interface OrderProcessLinkMapper {
   /** 根据工单ID查询关联记录 返回 process_instance_id 等运行时数据，用于服务层填充 WorkOrder 显示字段 */
   OrderProcessLink selectByWorkOrderId(@Param("workOrderId") Long workOrderId);
 
+  /** 根据工单ID查询关联记录（含逻辑删除行，W-03 重提交恢复场景使用） */
+  OrderProcessLink selectAnyByWorkOrderId(@Param("workOrderId") Long workOrderId);
+
   /** 根据流程实例ID查询工单ID（Flowable 事件回查工单用） */
   OrderProcessLink selectByProcessInstanceId(@Param("processInstanceId") String processInstanceId);
 
   /** 更新关联记录的流程实例ID（流程重启场景，如重新提交） */
   int updateProcessInstance(
+      @Param("workOrderId") Long workOrderId,
+      @Param("processInstanceId") String processInstanceId,
+      @Param("processDefinitionId") String processDefinitionId);
+
+  /** 恢复逻辑删除行并更新流程实例（W-03：重提交复用旧行，避免积累死行） */
+  int restoreAndUpdate(
       @Param("workOrderId") Long workOrderId,
       @Param("processInstanceId") String processInstanceId,
       @Param("processDefinitionId") String processDefinitionId);

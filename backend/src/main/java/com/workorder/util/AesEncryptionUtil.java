@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import com.workorder.common.exception.BusinessException;
@@ -60,6 +61,9 @@ public class AesEncryptionUtil {
   @Value("${work-order-system.security.aes-encryption-key:}")
   private String encryptionKeyConfig;
 
+  /** Spring 环境对象：用于判断当前激活 profile（与 KekService.isProdProfile() 保持一致） */
+  @Autowired private Environment environment;
+
   /**
    * Legacy 静态密钥（OPTIMIZATION 三.3.3 之前的密钥，用于解密历史数据）
    *
@@ -81,14 +85,15 @@ public class AesEncryptionUtil {
    */
   @PostConstruct
   public void init() {
-    String activeProfile = System.getProperty("spring.profiles.active", "dev");
+    boolean isProd = isProdProfile();
 
     if (encryptionKeyConfig == null || encryptionKeyConfig.isBlank()) {
-      if ("prod".equalsIgnoreCase(activeProfile)) {
+      if (isProd) {
         throw new IllegalStateException(
             "生产环境必须配置 work-order-system.security.aes-encryption-key（32 字节 Base64 编码，用于历史数据兼容）");
       }
-      logger.warn("[AES] dev 环境未配置 aes.encryption-key，生成临时 legacy 密钥（仅用于解密旧数据）");
+      // 仅当未激活 prod profile 时进入临时密钥分支（与 KekService 的 prod 判断逻辑一致）
+      logger.warn("[AES] 非生产环境未配置 work-order-system.security.aes-encryption-key，生成临时 legacy 密钥（仅用于解密旧数据）");
       byte[] tempKey = new byte[32];
       secureRandom.nextBytes(tempKey);
       legacySecretKeySpec = new SecretKeySpec(tempKey, ALGORITHM);
@@ -272,5 +277,21 @@ public class AesEncryptionUtil {
   private boolean isBase64(String str) {
     if (str == null || str.isEmpty()) return false;
     return str.matches("^[A-Za-z0-9+/]*={0,2}$");
+  }
+
+  /**
+   * 判断当前是否为生产环境。
+   *
+   * <p>与 KekService.isProdProfile() 保持同一逻辑：activeProfiles 含 "prod" 即视为生产环境， 避免使用
+   * System.getProperty("spring.profiles.active") 在环境变量方式激活 prod 时取不到值而误走 dev 临时密钥分支。
+   */
+  private boolean isProdProfile() {
+    String[] activeProfiles = environment.getActiveProfiles();
+    for (String profile : activeProfiles) {
+      if ("prod".equalsIgnoreCase(profile)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -9,6 +9,10 @@
         企业级多级审批流程
         支持6层组织架构：决策层→高管层→部门管理层→专业职能岗→一线执行岗→基层辅助岗
         审批规则通过approval_rule表配置，支持动态审批链路
+
+        W-01 修复（fix-spec §3）：每个审批任务后增加排他网关 gw_xxx_result，
+        首个条件判定 ${approved == false} → end_rejected，其余按审批链继续；
+        end_rejected 已补齐 incoming 连线。
     -->
     <process id="enterprise_approval_process" name="企业级多级审批流程" isExecutable="true">
 
@@ -29,6 +33,9 @@
             </extensionElements>
         </userTask>
 
+        <!-- 专项审核结果网关（W-01：驳回分流到 end_rejected） -->
+        <exclusiveGateway id="gw_specialist_result" name="专项审核结果？"/>
+
         <!-- 部门经理审批节点 -->
         <userTask id="manager_approve" name="部门经理审批">
             <extensionElements>
@@ -36,6 +43,9 @@
                         delegateExpression="${departmentManagerAssigner}"/>
             </extensionElements>
         </userTask>
+
+        <!-- 部门经理审批结果网关（W-01） -->
+        <exclusiveGateway id="gw_manager_result" name="部门经理审批结果？"/>
 
         <!-- 高管层审批网关 -->
         <exclusiveGateway id="director_gateway" name="是否需要总监/副总审批？"/>
@@ -48,6 +58,9 @@
             </extensionElements>
         </userTask>
 
+        <!-- 高管层审批结果网关（W-01） -->
+        <exclusiveGateway id="gw_director_result" name="高管层审批结果？"/>
+
         <!-- 决策层终审网关 -->
         <exclusiveGateway id="executive_gateway" name="是否需要总经理/董事长终审？"/>
 
@@ -58,6 +71,9 @@
                         delegateExpression="${executiveAssigner}"/>
             </extensionElements>
         </userTask>
+
+        <!-- 决策层终审结果网关（W-01） -->
+        <exclusiveGateway id="gw_executive_result" name="决策层终审结果？"/>
 
         <!-- 结束节点 -->
         <endEvent id="end_approved" name="审批通过"/>
@@ -80,11 +96,25 @@
             <conditionExpression xsi:type="tFormalExpression">${needSpecialistReview == false || needSpecialistReview == null}</conditionExpression>
         </sequenceFlow>
 
-        <!-- 专项审核 -> 部门经理审批 -->
-        <sequenceFlow id="flow_specialist_manager" sourceRef="specialist_review" targetRef="manager_approve"/>
+        <!-- 专项审核 -> 专项审核结果网关 -->
+        <sequenceFlow id="flow_specialist_result" sourceRef="specialist_review" targetRef="gw_specialist_result"/>
 
-        <!-- 部门经理审批 -> 高管层判断 -->
-        <sequenceFlow id="flow_manager_director" sourceRef="manager_approve" targetRef="director_gateway"/>
+        <!-- 专项审核结果分支（W-01：驳回终止流程） -->
+        <sequenceFlow id="flow_specialist_reject" sourceRef="gw_specialist_result" targetRef="end_rejected">
+            <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+        </sequenceFlow>
+
+        <sequenceFlow id="flow_specialist_pass" sourceRef="gw_specialist_result" targetRef="manager_approve"/>
+
+        <!-- 部门经理审批 -> 部门经理审批结果网关 -->
+        <sequenceFlow id="flow_manager_result" sourceRef="manager_approve" targetRef="gw_manager_result"/>
+
+        <!-- 部门经理审批结果分支（W-01：驳回终止流程） -->
+        <sequenceFlow id="flow_manager_reject" sourceRef="gw_manager_result" targetRef="end_rejected">
+            <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+        </sequenceFlow>
+
+        <sequenceFlow id="flow_manager_pass" sourceRef="gw_manager_result" targetRef="director_gateway"/>
 
         <!-- 高管层审批判断分支 -->
         <sequenceFlow id="flow_need_director" sourceRef="director_gateway" targetRef="director_approve">
@@ -95,8 +125,15 @@
             <conditionExpression xsi:type="tFormalExpression">${needDirectorApproval == false || needDirectorApproval == null}</conditionExpression>
         </sequenceFlow>
 
-        <!-- 高管层审批 -> 决策层判断 -->
-        <sequenceFlow id="flow_director_executive" sourceRef="director_approve" targetRef="executive_gateway"/>
+        <!-- 高管层审批 -> 高管层审批结果网关 -->
+        <sequenceFlow id="flow_director_result" sourceRef="director_approve" targetRef="gw_director_result"/>
+
+        <!-- 高管层审批结果分支（W-01：驳回终止流程） -->
+        <sequenceFlow id="flow_director_reject" sourceRef="gw_director_result" targetRef="end_rejected">
+            <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+        </sequenceFlow>
+
+        <sequenceFlow id="flow_director_pass" sourceRef="gw_director_result" targetRef="executive_gateway"/>
 
         <!-- 决策层终审判断分支 -->
         <sequenceFlow id="flow_need_executive" sourceRef="executive_gateway" targetRef="executive_approve">
@@ -107,8 +144,15 @@
             <conditionExpression xsi:type="tFormalExpression">${needExecutiveApproval == false || needExecutiveApproval == null}</conditionExpression>
         </sequenceFlow>
 
-        <!-- 决策层终审 -> 结束 -->
-        <sequenceFlow id="flow_executive_end" sourceRef="executive_approve" targetRef="end_approved"/>
+        <!-- 决策层终审 -> 决策层终审结果网关 -->
+        <sequenceFlow id="flow_executive_result" sourceRef="executive_approve" targetRef="gw_executive_result"/>
+
+        <!-- 决策层终审结果分支（W-01：驳回终止流程，通过进入 end_approved） -->
+        <sequenceFlow id="flow_executive_reject" sourceRef="gw_executive_result" targetRef="end_rejected">
+            <conditionExpression xsi:type="tFormalExpression">${approved == false}</conditionExpression>
+        </sequenceFlow>
+
+        <sequenceFlow id="flow_executive_end" sourceRef="gw_executive_result" targetRef="end_approved"/>
 
     </process>
 

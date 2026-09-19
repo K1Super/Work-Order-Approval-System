@@ -1,6 +1,7 @@
 package com.workorder.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -169,10 +170,11 @@ class ApproverResolverServiceImplTest {
     }
 
     @Test
-    @DisplayName("申请人ID为空字符串应触发 NumberFormatException 并返回 null")
-    void empty_applicantId_returns_null() {
-      String result = service.resolveAssignee("HR Review", "", null, null, null, null);
-      assertThat(result).isNull();
+    @DisplayName("申请人ID为空字符串时解析异常并抛 RuntimeException（fail-loud）")
+    void empty_applicantId_throws() {
+      assertThrows(
+          RuntimeException.class,
+          () -> service.resolveAssignee("HR Review", "", null, null, null, null));
     }
 
     @Test
@@ -186,10 +188,11 @@ class ApproverResolverServiceImplTest {
     }
 
     @Test
-    @DisplayName("非数字的申请人ID应优雅处理并返回 null")
-    void non_numeric_applicant_id_returns_null() {
-      String result = service.resolveAssignee("HR Review", "abc", null, null, null, null);
-      assertThat(result).isNull();
+    @DisplayName("非数字的申请人ID解析失败并抛 RuntimeException（fail-loud）")
+    void non_numeric_applicant_id_throws() {
+      assertThrows(
+          RuntimeException.class,
+          () -> service.resolveAssignee("HR Review", "abc", null, null, null, null));
     }
 
     @Test
@@ -1198,12 +1201,13 @@ class ApproverResolverServiceImplTest {
   class RobustnessTests {
 
     @Test
-    @DisplayName("UserMapper 抛出异常时 resolveAssignee 返回 null")
-    void mapper_exception_returns_null() {
+    @DisplayName("UserMapper 抛出异常时 resolveAssignee 抛 RuntimeException（fail-loud）")
+    void mapper_exception_throws() {
       when(userMapper.selectById(anyLong())).thenThrow(new RuntimeException("Connection refused"));
 
-      String result = service.resolveAssignee("HR Review", "1", null, null, null, null);
-      assertThat(result).isNull();
+      assertThrows(
+          RuntimeException.class,
+          () -> service.resolveAssignee("HR Review", "1", null, null, null, null));
     }
 
     @Test

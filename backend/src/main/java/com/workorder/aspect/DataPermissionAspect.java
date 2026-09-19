@@ -165,7 +165,11 @@ public class DataPermissionAspect {
     }
   }
 
-  /** 工单所有权校验 规则：发起人 == 当前用户 OR 当前用户是当前审批人 OR 同部门管理层 */
+  /**
+   * 工单所有权校验
+   *
+   * <p>规则：1. 申请人本人 2. 组织层级 <=2 的本部门管理层 3. 拥有 workorder:view-all 权限
+   */
   private void checkWorkOrderOwnership(
       Object resourceId, CustomUserDetails currentUser, Long currentUserId, String username) {
     WorkOrder workOrder = resolveWorkOrder(resourceId);
@@ -179,13 +183,7 @@ public class DataPermissionAspect {
       return;
     }
 
-    // 2. 当前用户是该工单的当前审批人（按 username 匹配 current_assignee）
-    if (workOrder.getCurrentAssignee() != null
-        && workOrder.getCurrentAssignee().equals(currentUser.getUsername())) {
-      return;
-    }
-
-    // 3. 管理层（orgLevel <= 2）可查看本部门工单
+    // 2. 管理层（orgLevel <= 2）可查看本部门工单
     Integer orgLevel = currentUser.getOrgLevel();
     if (orgLevel != null && orgLevel <= 2 && workOrder.getApplicantId() != null) {
       User applicant = userMapper.selectById(workOrder.getApplicantId());
@@ -196,7 +194,7 @@ public class DataPermissionAspect {
       }
     }
 
-    // 4. 拥有 view-all 权限的用户可查看
+    // 3. 拥有 view-all 权限的用户可查看
     if (currentUser.hasPermission("workorder:view-all")) {
       return;
     }

@@ -74,6 +74,16 @@ public interface WorkOrderMapper {
   int updateWithVersion(WorkOrder workOrder);
 
   /**
+   * W-04 修复：草稿编辑白名单更新（带乐观锁）
+   *
+   * <p>仅允许更新 title/content/remark/attachment_url/department 五个业务可编辑列，
+   * 不包含 status/complete_time/department_id/priority/order_type，杜绝 Mass Assignment。
+   *
+   * @return 受影响行数：1=更新成功；0=版本冲突
+   */
+  int updateDraft(WorkOrder workOrder);
+
+  /**
    * 更新工单状态（带乐观锁）
    *
    * @param id 工单ID
@@ -111,9 +121,12 @@ public interface WorkOrderMapper {
    * 对账扫描：追加 remark 标记申请人已离职（OPTIMIZATION 二）
    *
    * @param workOrderId 工单ID
+   * @param version 当前版本号（乐观锁校验）
    * @param remarkAppend 追加的备注内容
    * @return 受影响行数
    */
   int appendRemarkForOrphanWorkOrder(
-      @Param("workOrderId") Long workOrderId, @Param("remarkAppend") String remarkAppend);
+      @Param("workOrderId") Long workOrderId,
+      @Param("version") Long version,
+      @Param("remarkAppend") String remarkAppend);
 }

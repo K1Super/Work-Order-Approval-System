@@ -45,9 +45,6 @@ public class SecurityAuditLog implements Serializable {
   /** Create timestamp */
   private LocalDateTime createTime;
 
-  /** 逻辑删除标识：0-未删除 1-已删除（规范 §2.7.1 审计字段） */
-  private Integer isDeleted;
-
   /** 创建人ID（规范 §2.7.1 审计字段） */
   private Long createBy;
 
@@ -167,14 +164,6 @@ public class SecurityAuditLog implements Serializable {
 
   public void setCreateTime(LocalDateTime createTime) {
     this.createTime = createTime;
-  }
-
-  public Integer getIsDeleted() {
-    return isDeleted;
-  }
-
-  public void setIsDeleted(Integer isDeleted) {
-    this.isDeleted = isDeleted;
   }
 
   public Long getCreateBy() {

@@ -683,7 +683,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Download, Check, WarningFilled, Select, CopyDocument, Key } from '@element-plus/icons-vue'
+import { Check, WarningFilled, CopyDocument, Key } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
 import request from '@/utils/request'
 import { RESULT_CODE } from '@/constants'
@@ -764,9 +764,6 @@ const roleSubmitting = ref(false)
 // 角色配置：最多分配2个职位
 const maxRoles = 2
 
-// 超级管理员职位ID（互斥）
-const superAdminRoleId = 1
-
 // 离职对话框相关
 const resignDialogVisible = ref(false)
 const resignSubmitting = ref(false)
@@ -829,18 +826,6 @@ const allFixedRoles = computed(() => [
   ...employeeLevelRoles.value
 ])
 
-// 组织层级标签
-function getOrgLevelLabel(level) {
-  const labels = {
-    0: '系统',
-    1: '决策层',
-    2: '管理层',
-    3: '职能层',
-    4: '执行层'
-  }
-  return labels[level] || ''
-}
-
 // 判断是否可以选择该角色
 function canSelectRole(roleId) {
   // 已选中的可以取消
@@ -894,20 +879,6 @@ function handleRoleClick(roleId) {
   }
   toggleRoleSelection(roleId)
 }
-
-// 带检查的添加角色
-function addRoleWithCheck(roleId) {
-  if (!canSelectRole(roleId)) {
-    return
-  }
-  addRole(roleId)
-}
-
-// 计算属性
-const filteredPositions = computed(() => {
-  if (!formData.departmentId) return positions.value
-  return positions.value.filter(p => p.dept_id === formData.departmentId)
-})
 
 // 部门管理员角色码（与 MainLayout.vue / 后端 RoleConstants.DEPT_ADMIN_ROLE_IDS 对齐）
 const DEPT_ADMIN_ROLE_CODES = [
@@ -967,6 +938,7 @@ async function loadDepartments() {
       departments.value = response.data || []
     }
   } catch (error) {
+    // 错误提示已由 request.js 响应拦截器统一处理，此处静默返回避免重复弹窗
   }
 }
 
@@ -977,6 +949,7 @@ async function loadPositions() {
       positions.value = response.data || []
     }
   } catch (error) {
+    // 错误提示已由 request.js 响应拦截器统一处理，此处静默返回避免重复弹窗
   }
 }
 
@@ -1538,19 +1511,6 @@ function toggleRoleSelection(roleId) {
   }
 }
 
-function addRole(roleId) {
-  if (!selectedRoleIds.value.includes(roleId)) {
-    selectedRoleIds.value.push(roleId)
-  }
-}
-
-function removeRole(roleId) {
-  const index = selectedRoleIds.value.indexOf(roleId)
-  if (index > -1) {
-    selectedRoleIds.value.splice(index, 1)
-  }
-}
-
 async function handleSubmitRoles() {
   roleSubmitting.value = true
   try {
@@ -1646,29 +1606,6 @@ function getPositionName(positionId) {
   return pos ? pos.label : '-'
 }
 
-// 职位标签颜色（不同职位显示不同颜色）- 蓝灰色调
-function getRoleTagType(index) {
-  const types = ['', 'info', 'warning']
-  return types[index % types.length]
-}
-
-// 根据职位ID获取职位名称 - 使用固定角色列表
-function getRoleNameById(roleId) {
-  const role = allFixedRoles.value.find(r => r.value === roleId)
-  return role ? role.label : ''
-}
-
-function getOrgLevelType(level) {
-  switch (level) {
-    case 0: return 'danger'   // 系统级
-    case 1: return 'warning'  // 高管级
-    case 2: return ''         // 管理级
-    case 3: return 'success'  // 专员级
-    case 4: return 'info'     // 员工级
-    default: return ''
-  }
-}
-
 function getOrgLevelText(level) {
   switch (level) {
     case 0: return '系统级'
@@ -1689,7 +1626,7 @@ function getStatusText(status) {
   }
 }
 
-function handleDeptChange(deptId) {
+function handleDeptChange() {
   formData.positionId = null
 }
 
