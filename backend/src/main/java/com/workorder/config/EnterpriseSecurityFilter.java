@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.workorder.common.result.Result;
+import com.workorder.util.XssAttackPatterns;
 
 /**
  * Enterprise Web Security Filter 企业级Web安全过滤器 — 防护常见Web漏洞
@@ -34,8 +35,9 @@ import com.workorder.common.result.Result;
  * <p>阶段 3 修复 §3 — 输入与输出防护
  *
  * <p>Security Features: 1. 严格 CSP（script-src 'self'，移除 unsafe-inline） 2.
- * 安全响应头（HSTS、X-Frame-Options、X-Content-Type-Options、Referrer-Policy） 3. CSRF Protection（JWT Bearer
- * 校验） 4. Caffeine 本地限流（登录 5/min/IP、审批 30/min/用户、其他 100/min/用户） 5. AntPathMatcher 路径匹配（避免子串匹配绕过）
+ * 安全响应头（X-Frame-Options、X-Content-Type-Options、Referrer-Policy；HSTS 由 SecurityConfig 单一来源仅 prod 下发） 3.
+ * CSRF Protection（JWT Bearer 校验） 4. Caffeine 本地限流（登录 5/min/IP、审批 30/min/用户、其他 100/min/用户；仅单实例有效，分布式由
+ * Nginx limit_req 承担） 5. AntPathMatcher 路径匹配（避免子串匹配绕过）
  *
  * @author KLord
  */
@@ -52,18 +54,10 @@ public class EnterpriseSecurityFilter implements Filter {
   /** HTTP 429 Too Many Requests 状态码 */
   private static final int HTTP_STATUS_TOO_MANY_REQUESTS = 429;
 
-  /** XSS 攻击模式（仅检测真实 XSS，不误拦合法 HTML） */
-  private static final Pattern[] XSS_PATTERNS = {
-    Pattern.compile("<script[^>]*>.*?</script>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
-    Pattern.compile("javascript:", Pattern.CASE_INSENSITIVE),
-    Pattern.compile(
-        "on(load|error|click|mouseover|focus|blur|submit)\\s*=", Pattern.CASE_INSENSITIVE),
-    Pattern.compile("<iframe[^>]*>", Pattern.CASE_INSENSITIVE),
-    Pattern.compile("<object[^>]*>", Pattern.CASE_INSENSITIVE),
-    Pattern.compile("<embed[^>]*>", Pattern.CASE_INSENSITIVE),
-    Pattern.compile("expression\\s*\\(", Pattern.CASE_INSENSITIVE),
-    Pattern.compile("vbscript:", Pattern.CASE_INSENSITIVE)
-  };
+  /**
+   * XSS 攻击模式 — 统一取自 {@link XssAttackPatterns}（审计修复 P3-6：参数级与 JSON body 级检测共用同一口径）。
+   */
+  private static final Pattern[] XSS_PATTERNS = XssAttackPatterns.PATTERNS;
 
   /** AntPathMatcher 路径匹配器 */
   private final AntPathMatcher pathMatcher = new AntPathMatcher();
@@ -178,8 +172,9 @@ public class EnterpriseSecurityFilter implements Filter {
     // 防 MIME 嗅探
     response.setHeader("X-Content-Type-Options", "nosniff");
 
-    // 浏览器内置 XSS 保护
-    response.setHeader("X-XSS-Protection", "1; mode=block");
+    // 审计修复 P1-2：HSTS 与 X-XSS-Protection 不由本 filter 下发 ——
+    // HSTS 由 SecurityConfig 单一来源控制（仅 prod 下发）；X-XSS-Protection 已废弃，直接移除。
+    // 本 filter 仅在 Spring Security 链内最先执行，若仍在此无条件设置会覆盖 SecurityConfig 的 prod 判断。
 
     // Referrer 控制
     response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -197,9 +192,6 @@ public class EnterpriseSecurityFilter implements Filter {
             + "frame-ancestors 'none'; "
             + "base-uri 'self'; "
             + "form-action 'self'");
-
-    // HSTS：强制 HTTPS 1 年
-    response.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
     // 防敏感数据缓存
     response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");

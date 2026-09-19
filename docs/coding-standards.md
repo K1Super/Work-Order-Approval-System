@@ -1121,7 +1121,7 @@ src
 ### 5.1 现行门禁
 
 - **Checkstyle 硬门禁**：`mvn validate` 阶段自动执行，`failsOnError=true`，覆盖率含测试源码；6 处存量违规已于 2026-09-19 清零。
-- **测试规模**：343 单测 + 10 集成测试（合计 353，2026-09-19 工单/员工双服务组件化后由 281 提升）。
+- **测试规模**：356 单测 + 10 集成测试（合计 366，2026-09-19 双服务组件化与安全缺陷整改后由 281 提升）。
 - **单元测试**：`mvn test` 全绿，覆盖 Service 层核心业务逻辑。
 - **集成测试**：`mvn verify -Pit`，接入真实 PostgreSQL + Redis；测试库 `work_order_it` 自动重建，Redis 使用 database 1；数据库密码不再有默认值，需 `-Dit.db.password=<本机密码>` 或环境变量 `IT_DB_PASSWORD`（CI 由 secrets/services 注入）。
 - **前端构建**：`npm run build`（构建成功仍作为门禁）。

@@ -11,6 +11,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import com.workorder.common.enums.ApprovalActionEnum;
+import com.workorder.config.MetricsConfig;
 import com.workorder.dao.ApprovalLogMapper;
 import com.workorder.entity.ApprovalLog;
 import com.workorder.service.IOrderProcessLinkService;
@@ -37,6 +38,9 @@ public class WorkOrderEventListener {
   @Autowired private ApprovalLogMapper approvalLogMapper;
 
   @Autowired private IOrderProcessLinkService orderProcessLinkService;
+
+  /** 安全告警指标（审计修复 P2-5：审计写库失败必须可采集可告警，而非仅记日志） */
+  @Autowired private MetricsConfig metricsConfig;
 
   /** 工单提交事件处理 - W-13 修复：order_process_link 已由主事务同步持久化，此处不再重复创建 - 记录 SUBMIT 审计日志 - 通知申请人 */
   @Async
@@ -136,6 +140,10 @@ public class WorkOrderEventListener {
           event.getTaskName(),
           event.getTaskId());
     } catch (Exception e) {
+      // 审计修复 P2-5：主事务已提交无法回滚（设计使然），但审计静默丢失不可接受 ——
+      // 除 error 日志外记 Prometheus 告警指标（wos_audit_persistence_failures_total）供运维告警，
+      // 极端情况由 P4 对账任务兜底。
+      metricsConfig.recordAuditPersistenceFailure(event.getEventType());
       logger.error(
           "[AUDIT] 审计日志记录失败 - 工单ID: {}, 事件: {}, 错误: {}",
           event.getWorkOrderId(),

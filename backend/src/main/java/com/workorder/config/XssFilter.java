@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
@@ -20,6 +21,7 @@ import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletRequestWrapper;
+import javax.servlet.http.HttpServletResponse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +34,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.workorder.common.result.Result;
+import com.workorder.util.XssAttackPatterns;
 import com.workorder.util.XssCleanUtil;
 
 /**
@@ -50,6 +54,7 @@ import com.workorder.util.XssCleanUtil;
 public class XssFilter implements Filter {
 
   private static final Logger logger = LoggerFactory.getLogger(XssFilter.class);
+  private static final Logger securityLogger = LoggerFactory.getLogger("SECURITY_VIOLATION_LOGGER");
 
   /**
    * 跳过净化的路径前缀（密码含特殊字符、文件为二进制）。
@@ -105,7 +110,49 @@ public class XssFilter implements Filter {
     }
 
     XssRequestWrapper wrapper = new XssRequestWrapper(httpRequest);
+
+    // 审计修复 P3-6：JSON body 拦截型检测（纵深防御补层）。
+    // 净化前检测原始缓存的 JSON body，与 EnterpriseSecurityFilter 参数级检测共用 XssAttackPatterns 同一口径；
+    // 命中即 400 拦截，弥补此前 `checkXss` 只遍历 parameterMap、POST JSON body 的 <script> 无人拦截的缺口。
+    if (containsXssAttack(wrapper.getRawBodyAsString(), httpRequest)) {
+      securityLogger.warn(
+          "[XSS拦截-JSONBody] IP: {}, URI: {}, 请求体长度: {}",
+          httpRequest.getRemoteAddr(),
+          httpRequest.getRequestURI(),
+          wrapper.getRawBodyAsString().length());
+      HttpServletResponse httpResponse = (HttpServletResponse) response;
+      sendErrorResponse(httpResponse, HttpServletResponse.SC_BAD_REQUEST, "检测到非法脚本内容，请检查您的输入");
+      return;
+    }
+
     chain.doFilter(wrapper, response);
+  }
+
+  /** 检测 JSON 请求体是否命中 XSS 攻击模式（与参数级检测共用同一口径） */
+  private boolean containsXssAttack(String body, HttpServletRequest request) {
+    if (body == null || body.isEmpty()) {
+      return false;
+    }
+    String contentType = request.getContentType();
+    if (contentType == null || !contentType.toLowerCase().contains("application/json")) {
+      return false;
+    }
+    for (Pattern pattern : XssAttackPatterns.PATTERNS) {
+      if (pattern.matcher(body).find()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 发送 JSON 错误响应（拦截场景） */
+  private void sendErrorResponse(HttpServletResponse response, int statusCode, String message)
+      throws IOException {
+    response.setStatus(statusCode);
+    response.setContentType("application/json;charset=UTF-8");
+    ObjectMapper mapper = new ObjectMapper();
+    Result<?> errorResult = Result.error(statusCode, message);
+    response.getWriter().write(mapper.writeValueAsString(errorResult));
   }
 
   private boolean isExcluded(String path) {
@@ -153,6 +200,9 @@ public class XssFilter implements Filter {
 
     private byte[] cachedBody;
 
+    /** 原始请求体文本（净化前），审计修复 P3-6 供拦截型 XSS 检测使用 */
+    private String rawBody;
+
     /** 是否对缓存 body 做 Jsoup 净化（排除路径包装时为 false，仅缓存保证可重复读取） */
     private final boolean cleanBody;
 
@@ -190,13 +240,19 @@ public class XssFilter implements Filter {
           // W-08：按字段净化 JSON body（仅清洗非密码字段的字符串值，保留 JSON 结构；
           // 密码字段如 password/oldPassword/newPassword/confirmPassword 不做 Jsoup 清洗，避免改写密码字符）
           // cleanBody=false 时（排除路径）仅缓存不净化
+          rawBody = sb.toString();
           cachedBody =
-              (cleanBody ? cleanJsonBody(sb.toString()) : sb.toString())
+              (cleanBody ? cleanJsonBody(rawBody) : rawBody)
                   .getBytes(StandardCharsets.UTF_8);
         }
       } catch (IOException e) {
         // 缓存失败时不阻塞请求，原样放行
       }
+    }
+
+    /** 返回原始请求体文本（净化前，供拦截型 XSS 检测使用，审计修复 P3-6） */
+    public String getRawBodyAsString() {
+      return rawBody;
     }
 
     /**

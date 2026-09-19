@@ -174,7 +174,7 @@ Work Order Approval System/
 ### 生产环境部署
 1. **数据库**: PostgreSQL主从复制，定期备份（见 [部署指南](./docs/deployment-guide.md)）
 2. **缓存**: Redis Cluster集群模式；启用密码与ACL
-3. **应用**: 多实例部署 + Nginx负载均衡（HTTPS 反向代理示例见 [部署指南](./docs/deployment-guide.md)）
+3. **应用**: 多实例部署 + Nginx负载均衡（HTTPS 反向代理示例见 [部署指南](./docs/deployment-guide.md)）。注意：应用层 Caffeine 三级限流为 JVM 本地桶，仅单实例下阈值准确；多实例部署时登录/审批限流必须由 Nginx `limit_req` 承担（配置示例见部署指南 §2.1）
 4. **监控**: Prometheus + Grafana + AlertManager
 5. **日志**: ELK Stack日志收集分析（结构化日志见 `backend/src/main/resources/logback-spring.xml`）
 6. **证书**: Let's Encrypt 自动化签发与续期

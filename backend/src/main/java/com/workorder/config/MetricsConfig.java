@@ -34,7 +34,8 @@ public class MetricsConfig {
   public void init() {
     logger.info(
         "📊 Prometheus 安全指标已注册：wos_login_attempts_total, wos_authorization_denials_total, "
-            + "wos_sensitive_operations_total, wos_client_errors_total");
+            + "wos_sensitive_operations_total, wos_client_errors_total, "
+            + "wos_dek_fallback_total, wos_audit_persistence_failures_total, wos_aes_decrypt_failures_total");
   }
 
   /**
@@ -102,6 +103,60 @@ public class MetricsConfig {
           .increment();
     } catch (Exception e) {
       logger.debug("记录前端错误指标失败（不影响业务）: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * DEK 加密降级指标 — 审计修复 P2-4。
+   *
+   * <p>per-user DEK 加密失败回退 legacy 共享密钥时计数，该降级打破「主 KEK 泄露不牵连单用户」的隔离假设，
+   * 必须可采集可告警而非静默发生。
+   */
+  public void recordDekFallback() {
+    try {
+      Counter.builder("wos_dek_fallback_total")
+          .description("DEK encryption failures falling back to legacy shared key")
+          .register(meterRegistry)
+          .increment();
+    } catch (Exception e) {
+      logger.debug("记录 DEK 降级指标失败（不影响业务）: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * 审计日志落库失败指标 — 审计修复 P2-5。
+   *
+   * <p>审计日志 AFTER_COMMIT 异步写入失败时计数（主事务已提交无法回滚，极端情况下依赖对账任务兜底），
+   * 必须可采集可告警而非仅记日志。
+   *
+   * @param eventType 事件类型（SUBMIT/APPROVE/REJECT/TERMINATE/ARCHIVE，低基数）
+   */
+  public void recordAuditPersistenceFailure(String eventType) {
+    try {
+      Counter.builder("wos_audit_persistence_failures_total")
+          .description("Audit log persistence failures (async AFTER_COMMIT)")
+          .tag("event_type", eventType != null ? eventType : "UNKNOWN")
+          .register(meterRegistry)
+          .increment();
+    } catch (Exception e) {
+      logger.debug("记录审计落库失败指标失败（不影响业务）: {}", e.getMessage());
+    }
+  }
+
+  /**
+   * AES 解密全失败指标 — 审计修复 P1-1。
+   *
+   * <p>密文无法被任何密钥（per-user DEK / legacy）解密时计数；生产环境该场景下调用方按
+   * fail-close 处理（返回 null），指标用于发现密钥错配或数据损坏。
+   */
+  public void recordAesDecryptFailure() {
+    try {
+      Counter.builder("wos_aes_decrypt_failures_total")
+          .description("AES decryption failures with all available keys")
+          .register(meterRegistry)
+          .increment();
+    } catch (Exception e) {
+      logger.debug("记录 AES 解密失败指标失败（不影响业务）: {}", e.getMessage());
     }
   }
 }

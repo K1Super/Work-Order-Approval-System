@@ -21,6 +21,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import com.workorder.common.exception.BusinessException;
+import com.workorder.config.MetricsConfig;
 import com.workorder.security.DekContext;
 import com.workorder.security.DekService;
 
@@ -63,6 +64,9 @@ public class AesEncryptionUtil {
 
   /** Spring 环境对象：用于判断当前激活 profile（与 KekService.isProdProfile() 保持一致） */
   @Autowired private Environment environment;
+
+  /** 安全告警指标（审计修复 P1-1 / P2-4：解密全失败与 DEK 降级必须可采集可告警） */
+  @Autowired private MetricsConfig metricsConfig;
 
   /**
    * Legacy 静态密钥（OPTIMIZATION 三.3.3 之前的密钥，用于解密历史数据）
@@ -138,6 +142,9 @@ public class AesEncryptionUtil {
         }
         return encryptWithKey(plain, dek);
       } catch (Exception e) {
+        // 审计修复 P2-4：DEK 加密失败回退 legacy 共享密钥打破「主 KEK 泄露不牵连单用户」的隔离假设，
+        // 必须记告警指标（Prometheus 采集）而非静默降级，配合日志供运维排查
+        metricsConfig.recordDekFallback();
         logger.error("[AES] 使用 DEK 加密失败 (userId={})，回退到 legacy 密钥: {}", userId, e.getMessage());
         // 回退到 legacy 密钥（容错）
       }
@@ -151,10 +158,10 @@ public class AesEncryptionUtil {
    * 解密字符串（OPTIMIZATION 三.3.3 优先使用 per-user DEK）
    *
    * <p>密钥选择： 1. DekContext 有 userId → 优先使用该用户的 DEK 解密 2. DEK 解密失败或无 userId → 回退到 legacy
-   * 静态密钥（解密历史数据） 3. 都失败 → 原样返回（视为明文，迁移期容错）
+   * 静态密钥（解密历史数据） 3. 都失败 → fail-close（审计修复 P1-1）：prod 返回 null + 告警指标，非 prod 原样返回（迁移期容错）
    *
    * @param stored 密文（base64(iv):base64(cipher)）
-   * @return 明文；若非加密格式（旧明文数据）则原样返回（迁移期容错）
+   * @return 明文；非加密格式（旧明文数据）原样返回；全密钥解密失败时 prod 返回 null / 非 prod 返回原值
    */
   public String decrypt(String stored) {
     if (stored == null || stored.isEmpty()) {
@@ -189,8 +196,21 @@ public class AesEncryptionUtil {
       return legacyResult;
     }
 
-    // 全部失败：原样返回（视为明文，迁移期容错）
-    logger.warn("[AES] 所有密钥均无法解密，返回原值: {}", stored.substring(0, Math.min(50, stored.length())));
+    // ============================================================
+    // 审计修复 P1-1：全密钥解密失败时 fail-close，密文绝不交还调用方
+    // （原实现原样返回密文，被篡改的手机号/邮箱会被当明文展示甚至写回）
+    // prod：返回 null + error 日志 + 告警指标（由 Prometheus 采集告警）
+    // 非 prod：保留迁移期容错（原样返回 + warn，便于旧数据排查）
+    // ============================================================
+    metricsConfig.recordAesDecryptFailure();
+    if (isProdProfile()) {
+      logger.error(
+          "[AES] 所有密钥均无法解密（密文被篡改/损坏或密钥错配），按 fail-close 返回 null: {}",
+          stored.substring(0, Math.min(50, stored.length())));
+      return null;
+    }
+    logger.warn("[AES] 所有密钥均无法解密，返回原值（非生产环境迁移期容错）: {}",
+        stored.substring(0, Math.min(50, stored.length())));
     return stored;
   }
 

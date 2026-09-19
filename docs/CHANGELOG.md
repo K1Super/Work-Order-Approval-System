@@ -2,6 +2,18 @@
 
 按版本倒序记录工单审批流转系统的所有显著变更（Keep a Changelog 风格）。基线版本为工程化代码审计报告 v2.8.2。
 
+## 2026-09-19 — 安全缺陷修复（P1/P2/P3 审计整改）
+
+- **P1-1 AES 解密 fail-close**：`AesEncryptionUtil.decrypt` 全密钥解密失败时不再原样返回密文。prod 返回 null + error 日志 + `wos_aes_decrypt_failures_total` 告警指标（密文绝不交还调用方，杜绝被篡改数据当明文展示/写回）；非 prod 保留迁移期容错（原样返回 + warn）。
+- **P1-2 安全响应头单一来源**：`EnterpriseSecurityFilter` 移除无条件 `Strict-Transport-Security` 与已废弃的 `X-XSS-Protection`，HSTS 由 `SecurityConfig` 单一来源控制（仅 prod 下发），修复 filter 先执行覆盖 SecurityConfig prod 判断的问题。
+- **P2-3 限流边界文档化**：README 部署章节与 deployment-guide §2.1 明确「应用层 Caffeine 三级限流仅单实例有效，多实例部署必须由 Nginx `limit_req` 承担分布式限流」，并附登录 5r/m/IP、审批 30r/m/用户（按 JWT 键近似用户维度）的完整 nginx 配置示例。
+- **P2-4 DEK 降级可观测**：`AesEncryptionUtil.encrypt` DEK 加密失败回退 legacy 共享密钥时记 `wos_dek_fallback_total` 告警指标（Prometheus 采集），补齐 per-user 隔离属性被静默降级的监控缺口。
+- **P2-5 审计失败告警**：`WorkOrderEventListener.logAuditEvent` 异步落库失败时除 error 日志外记 `wos_audit_persistence_failures_total` 告警指标（按事件类型 tag），与 P4 对账任务形成「指标告警 + 最终一致兜底」。
+- **P3-6 JSON body XSS 拦截**：新增共享攻击模式 `XssAttackPatterns`（`EnterpriseSecurityFilter` 参数级与 `XssFilter` 共用同一口径）；`XssFilter` 在净化前检测原始 JSON body，含 `<script>` 等攻击特征直接 400 拦截，纵深防御补齐 body 层。
+- **P3-7 核实为非缺陷**：`FileUploadValidator.generateSafeName`（32 位无横线 hex + 扩展名）与 `FileController.isValidFileId` 正则 `^[a-fA-F0-9]{32}\.[a-zA-Z0-9]{1,10}$` 完全对齐，上传后可正常下载，无需修改。
+- **P3-8 通知占位记录**：`notifyApplicant/notifyCurrentApprover` 仅日志占位，无真实邮件/IM 发送；README 已列扩展方向，待通知服务接入。
+- **验证结果**：新增 AES fail-close/DEK 降级（6 例）、JSON body XSS 拦截（5 例）、安全响应头回归（2 例）单测；`mvn verify -Pit` 全量通过（checkstyle 硬门禁含测试源码）。
+
 ## 2026-09-19 — 员工服务组件化拆分（上帝类治理）
 
 - **EmployeeServiceImpl 拆分为薄门面 + 5 组件**：`EmployeeServiceImpl`（原约 1760 行 → 约 150 行）仅实现 `IEmployeeService` 契约并纯委托；查询下沉至 `EmployeeQueryService`（分页/详情/导出/字典/上级），写操作下沉至 `EmployeeLifecycleOrchestrator`（创建/更新/删除/启用禁用/批量导入），密码下沉至 `EmployeePasswordService`（企业级重置安全规则 + 强密码生成），角色下沉至 `EmployeeRoleService`（全量替换分配 + orgLevel 自动计算）；权限判定收敛为 `EmployeeAccessGuard`（部门管理员/超管/最高角色/跨部门拦截）。
